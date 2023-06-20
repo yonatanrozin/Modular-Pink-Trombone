@@ -740,6 +740,9 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       this.Glottis.finishBlock();
       this.Tract.finishBlock();
 
+      //post diameter object for main script access
+      this.port.postMessage(this.Tract.diameter);
+
       return true;
     } catch (e) {
       console.log(`error from voice #${this.voiceNum}:`, e);

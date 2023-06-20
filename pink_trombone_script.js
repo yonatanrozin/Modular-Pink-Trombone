@@ -49,6 +49,10 @@ async function pinkTromboneVoicesInit() {
       processorOptions: { voiceNum: v }
     });
 
+    voiceNode.port.onmessage = function(msg) {
+      voiceNode.tractDiameters = msg.data;
+    };
+
     //see pinktrombone AudioSystem.init and AudioSystem.startSound
     let sampleRate = audioContext.sampleRate;
     let buf = audioContext.createBuffer(1, sampleRate * 2, sampleRate);
@@ -109,6 +113,7 @@ async function pinkTromboneVoicesInit() {
 
   audioContext.resume(); //resume in case paused by default
   ctxInitiated = true;
+  console.log("audio context initiated.");
 }
 
 function setVoiceCount(voiceCount) {
