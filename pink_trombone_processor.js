@@ -626,7 +626,6 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
         trans.timeAlive = 0;
         trans.lifeTime = 0.2;
         trans.strength = self.Glottis.intensity == 0 ? 0 : this.tIntensity;
-        console.log(trans.strength);
         trans.exponent = 200;
         this.transients.push(trans);
       },
@@ -749,8 +748,10 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
   }
   processMessage(msg) {
     if ("d" in msg) {
-      this.Tract.targetDiameter = msg.d;
       this.Tract.diameter = msg.d;
+    }
+    if ("td" in msg) {
+      this.Tract.targetDiameter = msg.td;
     }
   }
 }

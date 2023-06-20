@@ -23,7 +23,9 @@ const filter = {
 
 //create voice nodes + filter nodes, resume audioContext
 async function pinkTromboneVoicesInit() {
-  await audioContext.audioWorklet.addModule("pink_trombone_processor.js");
+  await audioContext.audioWorklet.addModule(
+    "modular_pink_trombone/pink_trombone_processor.js"
+  );
 
   gainNode = new GainNode(audioContext);
   gainNode.gain.value = 0;
@@ -107,8 +109,6 @@ async function pinkTromboneVoicesInit() {
 
   audioContext.resume(); //resume in case paused by default
   ctxInitiated = true;
-
-  console.log("voices initiated.");
 }
 
 function setVoiceCount(voiceCount) {
@@ -118,9 +118,9 @@ function setVoiceCount(voiceCount) {
   if (voiceCount > options.maxVoices)
     throw new Error("Voice count exceeds specified maximum value");
   for (var i = 0; i < options.maxVoices; i++) {
-    voices[i].outputFilter.disconnect();
+    voices[i].disconnect();
   }
   for (var i = 0; i < voiceCount; i++) {
-    if (voices[i]) voices[i].outputFilter.connect(gainNode);
+    if (voices[i]) voices[i].connect(voices[i].filters[0]);
   }
 }
