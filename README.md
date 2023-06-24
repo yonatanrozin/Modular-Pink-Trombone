@@ -1,18 +1,17 @@
 # Modular Pink Trombone
-A modular, audio-only version of Pink Trombone. Allows for significantly faster and non-blocking audio processing, as well as multiple simultaneous voices.
+A modular, audio-only version of Pink Trombone optimized for use in live performance. Features significantly faster and non-blocking audio processing and the ability to produce multiple simultaneous voices.
 
 __This code is functional on Chrome and Firefox. Other browsers have not yet been tested.__
 
 ## Modifications from original
 - The deprecated ```ScriptProcessorNode``` used in the original Pink Trombone code has been replaced with a new Web Audio API ```AudioWorkletNode```. This allows the audio processing to run in a dedicated thread, preventing the it from interfering with the rest of the script, or vice versa.
-  - The Pink Trombone variables ```Tract``` and ```Glottis``` have been reimplemented as instance variables of a new Web Audio ```AudioWorkletProcessor``` child-class ```VocalWorkletProcessor```. This allows multiple AudioWorkletNode objects, each with its own processor, to run simultaneously and efficiently. You can create a Pink Trombone chorus, if you so wish.
-  - The relevant Tract and Glottis properties have been reimplemented as AudioParameters of the AudioWorkletNode. This allows them to be written to from the main script easily. Setting tract diameters is slightly more complicated. See usage info below.
-- The UI has been removed, though it may be reimplemented at some point in the near future. To allow fricatives (noisy sounds resulting from points of high constriction) to be created without mouse input, the vocal processor simulates "touch" using the ```constriction-index``` and ```constriction-diameter``` AudioParameters. See Usage below for more info.
+  - The Pink Trombone variables ```Tract``` and ```Glottis``` have been reimplemented as instance variables of a new Web Audio ```AudioWorkletProcessor``` child-class ```VocalWorkletProcessor```. This allows multiple AudioWorkletNode objects, each with its own processor, to run simultaneously. You can create a Pink Trombone chorus, if you so wish.
+- The UI has been removed. Interfacing with the synthesizer is done solely by manipulating its variables directly (see usage info below). To allow fricatives (noisy sounds resulting from points of high constriction) to be created without mouse input, the vocal processor simulates "touch" using the ```constriction-index``` and ```constriction-diameter``` AudioParameters. See Usage below for more info.
 
 ## Installation
 - ```git clone``` this repo into your project folder
-- Add script tag to project html file: most likely ```<script src="modular_pink_trombone/pink_trombone_script.js"></script>``` or...
-- Incorporate the code from pink_trombone_script.js into your own Web Audio system.
+- Add script tag to project html file: most likely ```<script src="Modular_Pink_Trombone/pink_trombone_script.js"></script>``` or...
+- Incorporate the code from pink_trombone_script.js into your own Web Audio system. You'll still need to include ```pink_trombone_processor.js``` and ```noise.js```.
 
 ## Configuration
 - Set the MAX number of Pink Trombone voices sounding simultaneously using the ```options.maxVoices``` property inside ```pink_trombone_script.js```
