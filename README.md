@@ -101,5 +101,6 @@ You can avoid hard-coding many values yourself by "recording" them from Pink Tro
   - You may choose to call the above line of code in the callback of a window ```keypress``` event.
 - Say something using Pink Trombone UI
 - Copy ```frames``` array. You may want to use ```JSON.stringify(frames)```
-- Trim frames using ```frames.slice(<startFrame>, <endFrame>)```
+- Paste array into your own script. If you copied the object literal using ```JSON.stringify()``` you'll need to use ```JSON.parse(<literal>)``` to parse the string into the original object.
+- Trim frames using ```frames.slice(<startFrame>, <endFrame>)```, reverse frames using ```frames.reverse()```, etc.
 
