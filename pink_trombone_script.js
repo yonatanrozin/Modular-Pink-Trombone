@@ -4,12 +4,9 @@ const options = {
 };
 
 window.AudioContext = window.AudioContext || window.webkitAudioContext;
-var audioContext = new window.AudioContext();
+window.audioContext = new window.AudioContext();
 
-var ctxInitiated = false;
-
-window.gainNode;
-window.voices = [];
+export const voices = [];
 
 // filter cutoff frequencies and Q value for EQ filter
 // modify/add/remove as desired
@@ -22,12 +19,12 @@ const filter = {
 };
 
 //create voice nodes + filter nodes, resume audioContext
-async function pinkTromboneVoicesInit() {
+export async function pinkTromboneVoicesInit() {
   await audioContext.audioWorklet.addModule(
     "modular_pink_trombone/pink_trombone_processor.js"
   );
 
-  gainNode = new GainNode(audioContext);
+  window.gainNode = new GainNode(audioContext);
   gainNode.gain.value = 0;
   gainNode.connect(audioContext.destination);
 
@@ -112,20 +109,5 @@ async function pinkTromboneVoicesInit() {
   }
 
   audioContext.resume(); //resume in case paused by default
-  ctxInitiated = true;
   console.log("audio context initiated.");
-}
-
-function setVoiceCount(voiceCount) {
-  if (!ctxInitiated) {
-    throw new Error("AudioContext not initiated.");
-  }
-  if (voiceCount > options.maxVoices)
-    throw new Error("Voice count exceeds specified maximum value");
-  for (var i = 0; i < options.maxVoices; i++) {
-    voices[i].disconnect();
-  }
-  for (var i = 0; i < voiceCount; i++) {
-    if (voices[i]) voices[i].connect(voices[i].filters[0]);
-  }
 }
