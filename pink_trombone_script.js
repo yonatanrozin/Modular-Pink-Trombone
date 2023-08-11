@@ -1,32 +1,30 @@
 //set maximum allowed # of voices depending on CPU
-const options = {
-  maxVoices: 5
+export const options = {
+    maxVoices: 5,
+    filter: {
+        f: JSON.parse(
+            "[31, 44, 62, 88, 125, 176, 250, 353, 500, 707, 1000, 1414, 2000, 2828, 4000, 5656, 8000, 11313, 16000]"
+        ),
+        Q: 2.871
+    }
 };
 
-window.AudioContext = window.AudioContext || window.webkitAudioContext;
-window.audioContext = new window.AudioContext();
+export let ctxInitiated = false;
 
+//an array to hold created voice nodes
 export const voices = [];
 
-// filter cutoff frequencies and Q value for EQ filter
-// modify/add/remove as desired
-const filter = {
-  // 1/2 octave bands
-  f: JSON.parse(
-    "[31, 44, 62, 88, 125, 176, 250, 353, 500, 707, 1000, 1414, 2000, 2828, 4000, 5656, 8000, 11313, 16000]"
-  ),
-  Q: 2.871
-};
-
-//create voice nodes + filter nodes, resume audioContext
-export async function pinkTromboneVoicesInit() {
-  await audioContext.audioWorklet.addModule(
-    "modular_pink_trombone/pink_trombone_processor.js"
-  );
-
-  window.gainNode = new GainNode(audioContext);
-  gainNode.gain.value = 0;
-  gainNode.connect(audioContext.destination);
+/*
+    Args: an audioContext and a destination node (will default to context.destination)
+        Creates # of pink trombone voices according to options.maxVoices
+        Creates filters for each individual voice according to options.filter
+*/
+export async function pinkTromboneVoicesInit(ctx, destination = ctx.destination) {
+    await ctx.audioWorklet.addModule(
+        "modular_pink_trombone/pink_trombone_processor.js"
+    );
+    if (!ctx instanceof AudioContext) throw new Error('invalid AudioContext.');
+    if (!destination instanceof AudioNode) throw new Error('invalid destination.');
 
   /*
    *    Create voice nodes. For each:
@@ -39,36 +37,32 @@ export async function pinkTromboneVoicesInit() {
    *        Connect voice source to filter nodes in series + output to destination
    */
   for (let v = 0; v < options.maxVoices; v++) {
-    let voiceNode = new AudioWorkletNode(audioContext, "voice", {
+    let voiceNode = new AudioWorkletNode(ctx, "voice", {
       numberOfInputs: 2, //one for aspiration noise, one for fricative noise
       numberOfOutputs: 1,
-      outputChannelCount: [2], //stereo
+      outputChannelCount: [2], //stereo output for panning
       processorOptions: { voiceNum: v }
     });
 
-    voiceNode.port.onmessage = function(msg) {
-      voiceNode.tractDiameters = msg.data;
-    };
-
     //see pinktrombone AudioSystem.init and AudioSystem.startSound
-    let sampleRate = audioContext.sampleRate;
-    let buf = audioContext.createBuffer(1, sampleRate * 2, sampleRate);
+    let sampleRate = ctx.sampleRate;
+    let buf = ctx.createBuffer(1, sampleRate * 2, sampleRate);
     let bufSamps = buf.getChannelData(0);
     for (let i = 0; i < sampleRate * 2; i++) {
       bufSamps[i] = Math.random();
     }
-    let noiseNode = audioContext.createBufferSource();
+    let noiseNode = ctx.createBufferSource();
     noiseNode.buffer = buf;
     noiseNode.loop = true;
 
-    let aspirateFilter = audioContext.createBiquadFilter();
+    let aspirateFilter = ctx.createBiquadFilter();
     aspirateFilter.type = "bandpass";
     aspirateFilter.frequency.value = 500;
     aspirateFilter.Q.value = 0.5;
     noiseNode.connect(aspirateFilter);
     aspirateFilter.connect(voiceNode, 0, 0);
 
-    let fricativeFilter = audioContext.createBiquadFilter();
+    let fricativeFilter = ctx.createBiquadFilter();
     fricativeFilter.type = "bandpass";
     fricativeFilter.frequency.value = 1000;
     fricativeFilter.Q.value = 0.5;
@@ -76,7 +70,7 @@ export async function pinkTromboneVoicesInit() {
     fricativeFilter.connect(voiceNode, 0, 1);
     noiseNode.start();
 
-    let filterFreqs = filter.f;
+    let filterFreqs = options.filter.f;
 
     //create filter nodes according to # and value of frequencies
     voiceNode.filters = filterFreqs.map((f, i) => {
@@ -85,10 +79,10 @@ export async function pinkTromboneVoicesInit() {
       else if (i == filterFreqs.length - 1) fType = "highshelf";
       else fType = "peaking";
 
-      let filterNode = new BiquadFilterNode(audioContext);
+      let filterNode = new BiquadFilterNode(ctx);
       filterNode.type = fType;
       filterNode.frequency.value = f;
-      filterNode.Q.value = filter.Q;
+      filterNode.Q.value = options.filter.Q;
       filterNode.gain.value = 0;
       return filterNode;
     });
@@ -98,8 +92,8 @@ export async function pinkTromboneVoicesInit() {
       if (i == 0) voiceNode.connect(voiceNode.filters[0]);
       if (i == voiceNode.filters.length - 1) {
         //create pointer to last filter (filtered voice output)
-        voiceNode.outputFilter = voiceNode.filters[i];
-        voiceNode.outputFilter.connect(gainNode);
+        voiceNode.outputNode = voiceNode.filters[i];
+        voiceNode.outputNode.connect(destination);
       }
       if (i > 0) {
         voiceNode.filters[i - 1].connect(voiceNode.filters[i]);
@@ -108,6 +102,6 @@ export async function pinkTromboneVoicesInit() {
     voices[v] = voiceNode; //add node to voices array
   }
 
-  audioContext.resume(); //resume in case paused by default
+  ctx.resume(); //resume in case paused by default
   console.log("audio context initiated.");
 }
