@@ -319,12 +319,16 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       },
 
       setupWaveform: function(lambda) {
+
+        
         this.frequency =
           this.oldFrequency * (1 - lambda) + this.newFrequency * lambda;
         var tenseness =
           this.oldTenseness * (1 - lambda) + this.newTenseness * lambda;
         this.Rd = 3 * (1 - tenseness);
         this.waveformLength = 1.0 / this.frequency;
+
+        return;
 
         var Rd = this.Rd;
         if (Rd < 0.5) Rd = 0.5;
@@ -366,6 +370,9 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       },
 
       normalizedLFWaveform: function(t) {
+
+        return Math.random()*2 - 1;
+
         var output;
         if (t > this.Te)
           output =
@@ -380,7 +387,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
     };
 
     this.Tract = {
-      n: 44,
+      n: options.processorOptions.n,
       bladeStart: 10,
       tipStart: 32,
       lipStart: 39,
@@ -410,33 +417,33 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       constrictionDiameter: 5,
 
       init: function() {
-        this.bladeStart = Math.floor(this.bladeStart * 44 / 44);
-        this.tipStart = Math.floor(this.tipStart * 44 / 44);
-        this.lipStart = Math.floor(this.lipStart * 44 / 44);
-        this.diameter = new Float64Array(44);
-        this.restDiameter = new Float64Array(44);
-        this.targetDiameter = new Float64Array(44);
-        this.newDiameter = new Float64Array(44);
-        for (var i = 0; i < 44; i++) {
+        this.bladeStart = Math.floor(this.bladeStart * this.n / 44);
+        this.tipStart = Math.floor(this.tipStart * this.n / 44);
+        this.lipStart = Math.floor(this.lipStart * this.n / 44);
+        this.diameter = new Float64Array(this.n);
+        this.restDiameter = new Float64Array(this.n);
+        this.targetDiameter = new Float64Array(this.n);
+        this.newDiameter = new Float64Array(this.n);
+          for (var i = 0; i < this.n; i++) {
           var diameter = 0;
-          if (i < 7 * 44 / 44 - 0.5) diameter = 0.6;
-          else if (i < 12 * 44 / 44) diameter = 1.1;
+              if (i < 7 * this.n / 44 - 0.5) diameter = 0.6;
+              else if (i < 12 * this.n / 44) diameter = 1.1;
           else diameter = 1.5;
           this.diameter[i] = this.restDiameter[i] = this.targetDiameter[
             i
           ] = this.newDiameter[i] = diameter;
         }
-        this.R = new Float64Array(44);
-        this.L = new Float64Array(44);
-        this.reflection = new Float64Array(44 + 1);
-        this.newReflection = new Float64Array(44 + 1);
-        this.junctionOutputR = new Float64Array(44 + 1);
-        this.junctionOutputL = new Float64Array(44 + 1);
-        this.A = new Float64Array(44);
-        this.maxAmplitude = new Float64Array(44);
+        this.R = new Float64Array(this.n);
+          this.L = new Float64Array(this.n);
+          this.reflection = new Float64Array(this.n + 1);
+          this.newReflection = new Float64Array(this.n + 1);
+          this.junctionOutputR = new Float64Array(this.n + 1);
+          this.junctionOutputL = new Float64Array(this.n + 1);
+          this.A = new Float64Array(this.n);
+          this.maxAmplitude = new Float64Array(this.n);
 
-        this.noseLength = Math.floor(28 * 44 / 44);
-        this.noseStart = 44 - this.noseLength + 1;
+          this.noseLength = Math.floor(28 * this.n / 44);
+          this.noseStart = this.n - this.noseLength + 1;
         this.noseR = new Float64Array(this.noseLength);
         this.noseL = new Float64Array(this.noseLength);
         this.noseJunctionOutputR = new Float64Array(this.noseLength + 1);
@@ -462,7 +469,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       reshapeTract: function(deltaTime) {
         var amount = deltaTime * this.movementSpeed;
         var newLastObstruction = -1;
-        for (var i = 0; i < 44; i++) {
+          for (var i = 0; i < this.n; i++) {
           var diameter = this.diameter[i];
           var targetDiameter = this.targetDiameter[i];
           if (diameter <= 0) newLastObstruction = i;
@@ -501,10 +508,10 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       },
 
       calculateReflections: function() {
-        for (var i = 0; i < 44; i++) {
+          for (var i = 0; i < this.n; i++) {
           this.A[i] = this.diameter[i] * this.diameter[i]; //ignoring PI etc.
         }
-        for (var i = 1; i < 44; i++) {
+          for (var i = 1; i < this.n; i++) {
           this.reflection[i] = this.newReflection[i];
           if (this.A[i] == 0) this.newReflection[i] = 0.999;
           //to prevent some bad behaviour if 0
@@ -546,9 +553,9 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
         //this.glottalReflection = -0.8 + 1.6 * Glottis.newTenseness;
         this.junctionOutputR[0] =
           this.L[0] * this.glottalReflection + glottalOutput;
-        this.junctionOutputL[44] = this.R[44 - 1] * this.lipReflection;
+          this.junctionOutputL[this.n] = this.R[this.n - 1] * this.lipReflection;
 
-        for (var i = 1; i < 44; i++) {
+          for (var i = 1; i < this.n; i++) {
           var r =
             this.reflection[i] * (1 - lambda) + this.newReflection[i] * lambda;
           var w = r * (this.R[i - 1] + this.L[i]);
@@ -572,7 +579,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
         this.noseJunctionOutputR[0] =
           r * this.noseL[0] + (1 + r) * (this.L[i] + this.R[i - 1]);
 
-        for (var i = 0; i < 44; i++) {
+          for (var i = 0; i < this.n; i++) {
           this.R[i] = this.junctionOutputR[i] * 0.999;
           this.L[i] = this.junctionOutputL[i + 1] * 0.999;
 
@@ -587,7 +594,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
           }
         }
 
-        this.lipOutput = this.R[44 - 1];
+          this.lipOutput = this.R[this.n - 1];
 
         //nose
         this.noseJunctionOutputL[this.noseLength] =
