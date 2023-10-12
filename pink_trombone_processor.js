@@ -377,7 +377,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
           const i = Math.floor(t*this.customWave.length);
           const sampVal = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
 
-          return sampVal
+          return sampVal * this.intensity * this.loudness;
         }
 
         var output;
