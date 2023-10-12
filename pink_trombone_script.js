@@ -1,6 +1,6 @@
 //set maximum allowed # of voices depending on CPU
 export const options = {
-    maxVoices: 5,
+    maxVoices: 1,
     filter: {
         f: JSON.parse(
             "[31, 44, 62, 88, 125, 176, 250, 353, 500, 707, 1000, 1414, 2000, 2828, 4000, 5656, 8000, 11313, 16000]"
@@ -21,6 +21,12 @@ export const voices = [];
         Creates filters for each individual voice according to options.filter
 */
 export async function pinkTromboneVoicesInit(ctx, destination = ctx.destination) {
+
+    if (ctxInitiated) {
+        console.log("Context already initiated.")
+        return
+    }
+
     await ctx.audioWorklet.addModule(
         "modular_pink_trombone/pink_trombone_processor.js"
     );
@@ -46,7 +52,9 @@ export async function pinkTromboneVoicesInit(ctx, destination = ctx.destination)
         });
 
         voiceNode.port.onmessage = (e) => {
-            voiceNode.tractDiameters = e.data;
+            let data = e.data
+            if (data.d) voiceNode.tractDiameters = data.d;
+            if (data.exc) voiceNode.excitation = data.exc;
         }
 
         //see pinktrombone AudioSystem.init and AudioSystem.startSound

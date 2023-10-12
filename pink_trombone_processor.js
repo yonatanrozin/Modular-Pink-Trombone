@@ -102,7 +102,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
        */
       {
         name: "base-tenseness",
-        defaultValue: 0.6,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
@@ -110,7 +110,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
 
       {
         name: "intensity",
-        defaultValue: 0,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
@@ -141,7 +141,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       },
       {
         name: "loudness",
-        defaultValue: 0,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
@@ -241,6 +241,9 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       isTouched: false,
       aIntensity: 0,
 
+      useCustomWave: false,
+      customWave: null,
+
       init: function() {
         this.setupWaveform(0);
       },
@@ -328,8 +331,6 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
         this.Rd = 3 * (1 - tenseness);
         this.waveformLength = 1.0 / this.frequency;
 
-        return;
-
         var Rd = this.Rd;
         if (Rd < 0.5) Rd = 0.5;
         if (Rd > 2.7) Rd = 2.7;
@@ -371,7 +372,13 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
 
       normalizedLFWaveform: function(t) {
 
-        return Math.random()*2 - 1;
+        if (this.useCustomWave) {
+          const interpVal = 1 - (t * this.customWave.length)%1;
+          const i = Math.floor(t*this.customWave.length);
+          const sampVal = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
+
+          return sampVal
+        }
 
         var output;
         if (t > this.Te)
@@ -698,7 +705,7 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
 
   // based on code from pink trombone AudioContext.doScriptProcessor()
   process(inputs, outputs, params) {
-    //update a bunch of object variables using audioparam values
+    //update a bunch of object properties using audioparam values
     this.Glottis.UITenseness =
       params["tenseness"][0] * params["base-tenseness"][0];
     this.Glottis.UIFrequency = params["frequency"][0];
@@ -748,7 +755,13 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
       this.Tract.finishBlock();
 
       //post diameter object for main script access
-      this.port.postMessage(this.Tract.diameter);
+      this.port.postMessage({
+        d: this.Tract.diameter,
+        exc: Array(300).fill().map((v, i) => {
+          return this.Glottis.normalizedLFWaveform(i/300)
+        })
+
+      });
 
       return true;
     } catch (e) {
@@ -763,6 +776,10 @@ class VocalWorkletProcessor extends AudioWorkletProcessor {
     if ("td" in msg) {
       this.Tract.targetDiameter = msg.td;
     }
+    if ("exc" in msg) {
+      this.Glottis.customWave = msg.exc;
+      this.Glottis.useCustomWave = true;
+    } 
   }
 }
 
