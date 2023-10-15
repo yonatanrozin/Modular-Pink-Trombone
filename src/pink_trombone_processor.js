@@ -411,6 +411,7 @@ class TractProcessor extends AudioWorkletProcessor {
         maxValue: 1,
         automationRate: "a-rate"
       },
+      
 
       /*
        *    New to modular_pink_trombone: constriction index + diameter:
@@ -831,7 +832,7 @@ class TractProcessor extends AudioWorkletProcessor {
     //update a bunch of object properties using audioparam values
 
     this.Tract.velumTarget = params["velum-target"][0];
-    this.Tract.noseDiameter[0] = params["velum-target"][0];
+    // this.Tract.noseDiameter[0] = params["velum-target"][0];
     this.Tract.fIntensity = params["fricative-intensity"][0];
     this.Tract.tIntensity = params["transient-intensity"][0];
     this.Tract.constrictionDiameter = params["constriction-diameter"][0];
@@ -883,6 +884,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
       //post diameter object for main script access
       this.port.postMessage({
+        v: this.Tract.noseDiameter[0],
         d: this.Tract.diameter,
       });
 
@@ -898,6 +900,9 @@ class TractProcessor extends AudioWorkletProcessor {
     }
     if ("td" in msg) {
       this.Tract.targetDiameter = msg.td;
+    }
+    if ("n" in msg) {
+      this.Tract.n = msg.n;
     }
   }
 }

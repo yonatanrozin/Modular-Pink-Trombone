@@ -1,4 +1,4 @@
-import {voices, ctxInitiated} from './MPT/pink_trombone_script.js';
+import {voices, ctxInitiated} from './src/pink_trombone_script.js';
 
 //UI DOM objects per studio mode
 const controls = {
@@ -58,7 +58,7 @@ document.getElementById('getEQButton').onclick = function() {
 
 document.getElementById('excitationCopyButton').onclick= function() {
     if (!ctxInitiated) return;
-    navigator.clipboard.writeText(JSON.stringify(voices[0].excitation.map(v => Number(v.toFixed(3)))))
+    navigator.clipboard.writeText(JSON.stringify(voices[0].excitation.map(v => Number(v.toFixed(3)))));
 };
 
 document.getElementById('excitationSmoothButton').onclick = function() {
@@ -67,13 +67,13 @@ document.getElementById('excitationSmoothButton').onclick = function() {
 
     let val = null
     for (let i in exc) {
-        if (val == null) val = exc[i]
-        else val = val*.5 + exc[i]*.5
+        if (val == null) val = exc[i];
+        else val = val*.5 + exc[i]*.5;
 
-        exc[i] = val
+        exc[i] = val;
     }
 
-    voices[0].glottis.port.postMessage({exc: exc})
+    voices[0].glottis.port.postMessage({exc: exc});
 }
 
 document.getElementById('excitationInput').oninput = (e) => {
@@ -97,7 +97,7 @@ studioCanvas.addEventListener('mousemove', (e) => {
         if (!voices[0]) return;
         const filterI = Math.floor(x * voices[0].glottisFilters.length);
         const fNew = y * -20 + 10;
-        console.log(filterI, voices[0].glottisFilters.length, fNew)
+        console.log(filterI, voices[0].glottisFilters.length, fNew);
         if (voices[0].glottisFilters[filterI]) voices[0].glottisFilters[filterI].gain.value = fNew;
     } 
     
@@ -105,9 +105,9 @@ studioCanvas.addEventListener('mousemove', (e) => {
         if (!ctxInitiated) return;
 
         const i = Math.round(e.offsetX/e.target.width * (voices[0].tractDiameters.length));
-        const dia = (1-(e.offsetY/e.target.height))*5
+        const dia = (1-(e.offsetY/e.target.height)) * 5;
         const diameters = voices[0].tractDiameters;
-        diameters[i] = dia
+        diameters[i] = dia;
 
         voices[0].port.postMessage({
             d: diameters,
@@ -118,12 +118,12 @@ studioCanvas.addEventListener('mousemove', (e) => {
 
         if (!exc) return;
 
-        let i = Math.floor(e.offsetX/e.target.width*(exc.length-1))
-        let a = (1-e.offsetY/e.target.height)*2 - 1
+        let i = Math.floor(e.offsetX/e.target.width*(exc.length-1));
+        let a = (1-e.offsetY/e.target.height)*2 - 1;
 
         exc[i] = a;
 
-        voices[0].glottis.port.postMessage({exc, exc})
+        voices[0].glottis.port.postMessage({exc, exc});
     }
 })
 
