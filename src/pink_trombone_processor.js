@@ -78,14 +78,14 @@ class GlottisProcessor extends AudioWorkletProcessor {
       },
       {
         name: "intensity",
-        defaultValue: 1,
+        defaultValue: 0,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
       },
       {
         name: "loudness",
-        defaultValue: 1,
+        defaultValue: 0,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
@@ -290,21 +290,23 @@ class GlottisProcessor extends AudioWorkletProcessor {
 
         let output;
 
-        if (this.useCustomWave) {
-          const interpVal = 1 - (t * this.customWave.length)%1;
-          const i = Math.floor(t*this.customWave.length);
-          output = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
-          output = output * this.intensity * this.loudness;
-        }
+        // if (this.useCustomWave) {
+        //   const interpVal = 1 - (t * this.customWave.length)%1;
+        //   const i = Math.floor(t*this.customWave.length);
+        //   output = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
+        //   output = output * this.intensity * this.loudness;
+        // }
+        // else 
 
-        else {
+        {
           if (t > this.Te)
             output = (-Math.exp(-this.epsilon * (t - this.Te)) + this.shift) / this.Delta;
           else {
             output = this.E0 * Math.exp(this.alpha * t) * Math.sin(this.omega * t);
-            output = output * this.intensity * this.loudness;
           }
-          this.customWave[Math.floor(t * (this.customWave.length-1))] = output;
+
+          output = output * this.intensity * this.loudness;
+          // this.customWave[Math.floor(t * (this.customWave.length-1))] = output;
         }
 
         return output;
@@ -324,6 +326,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
     this.Glottis.loudness = params["loudness"][0];
     this.Glottis.vibratoAmount = params["vibrato-amount"][0];
     this.Glottis.vibratoFrequency = params["vibrato-frequency"][0];
+
 
     //some voices dont't have inputs defined immediately (why?)
     if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
@@ -451,7 +454,6 @@ class TractProcessor extends AudioWorkletProcessor {
         Intensity, loudness, tenseness - SHARED WITH GLOTTIS
         Make sure these are always in sync with values in glottis processor
       */
-
       {
         name: "intensity",
         defaultValue: 1,
@@ -847,6 +849,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
     try {
       var glottalSignal = inputs[0][0];
+
       var fricativeNoise = inputs[1][0];
       var outArrayL = outputs[0][0];
       var outArrayR = outputs[0][1];
@@ -861,6 +864,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
       for (var j = 0, N = outArrayL.length; j < N; j++) {
 
+        // uncomment these lines to hear pure glottis output (for debugging)
         // outArrayL[j] = glottalSignal[j] * panMultL
         // outArrayR[j] = glottalSignal[j] * panMultR
         // continue
@@ -887,6 +891,7 @@ class TractProcessor extends AudioWorkletProcessor {
         v: this.Tract.noseDiameter[0],
         d: this.Tract.diameter,
       });
+      
 
       return true;
     } catch (e) {
