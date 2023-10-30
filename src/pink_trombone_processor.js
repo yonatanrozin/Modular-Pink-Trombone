@@ -78,14 +78,14 @@ class GlottisProcessor extends AudioWorkletProcessor {
       },
       {
         name: "intensity",
-        defaultValue: 0,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
       },
       {
         name: "loudness",
-        defaultValue: 0,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
@@ -163,8 +163,10 @@ class GlottisProcessor extends AudioWorkletProcessor {
       isTouched: false,
       aIntensity: 0,
 
+      lastSampleValue: 0,
+
       useCustomWave: false,
-      customWave: new Float64Array(300),
+      customWave: new Float64Array(500),
 
       init: function() {
         this.setupWaveform(0);
@@ -213,7 +215,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
           this.vibratoAmount *
           Math.sin(2 * Math.PI * this.totalTime * this.vibratoFrequency);
         vibrato += 0.02 * self.noise.simplex1(this.totalTime * 4.07);
-        vibrato += 0.04 * self.noise.simplex1(this.totalTime * 2.15);
+        // vibrato += 0.04 * self.noise.simplex1(this.totalTime * 2.15);
         if (self.autoWobble) {
           vibrato += 0.2 * self.noise.simplex1(this.totalTime * 0.98);
           vibrato += 0.4 * self.noise.simplex1(this.totalTime * 0.5);
@@ -288,17 +290,17 @@ class GlottisProcessor extends AudioWorkletProcessor {
 
       normalizedLFWaveform: function(t) {
 
-        let output;
+        let output; //calculated sample value (BEFORE smoothing)
 
-        // if (this.useCustomWave) {
-        //   const interpVal = 1 - (t * this.customWave.length)%1;
-        //   const i = Math.floor(t*this.customWave.length);
-        //   output = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
-        //   output = output * this.intensity * this.loudness;
-        // }
-        // else 
-
-        {
+        if (this.useCustomWave) {
+          let i = t * this.customWave.length;
+          const interpVal = 1 - i % 1;
+          i = Math.floor(i);
+          output = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
+          output = output * this.intensity * this.loudness;
+          output = this.lastSampleValue * .75 + output * .25;
+        }
+        else {
           if (t > this.Te)
             output = (-Math.exp(-this.epsilon * (t - this.Te)) + this.shift) / this.Delta;
           else {
@@ -306,9 +308,12 @@ class GlottisProcessor extends AudioWorkletProcessor {
           }
 
           output = output * this.intensity * this.loudness;
-          // this.customWave[Math.floor(t * (this.customWave.length-1))] = output;
+          output = this.lastSampleValue * .75 + output * .25;
+
+          this.customWave[Math.floor(t * (this.customWave.length-1))] = output;
         }
 
+        this.lastSampleValue = output;
         return output;
       }
     }
@@ -326,7 +331,6 @@ class GlottisProcessor extends AudioWorkletProcessor {
     this.Glottis.loudness = params["loudness"][0];
     this.Glottis.vibratoAmount = params["vibrato-amount"][0];
     this.Glottis.vibratoFrequency = params["vibrato-frequency"][0];
-
 
     //some voices dont't have inputs defined immediately (why?)
     if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
@@ -350,21 +354,25 @@ class GlottisProcessor extends AudioWorkletProcessor {
         l: this.Glottis.loudness,
         i: this.Glottis.intensity,
         t: this.Glottis.UITenseness,
-        exc: this.Glottis.customWave
+        exc: this.Glottis.customWave,
+        f: this.Glottis.UIFrequency
       });
 
       return true;
     } catch (e) {
       console.log(`error from voice glottis #${this.voiceNum}:`, e);
-      return false;
+      // return false;
+      return true;
     }
   }
   processMessage(msg) {
-    if ("exc" in msg) {
+    if (msg.exc) {
       this.Glottis.customWave = msg.exc;
       this.Glottis.useCustomWave = true;
       console.log('got excitation!')
-    } 
+    } else {
+      this.Glottis.useCustomWave = false;
+    }
   }
 }
 
@@ -390,7 +398,7 @@ class TractProcessor extends AudioWorkletProcessor {
        */
       {
         name: "fricative-intensity",
-        defaultValue: 0,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 2,
         automationRate: "a-rate"
@@ -451,7 +459,18 @@ class TractProcessor extends AudioWorkletProcessor {
       },
 
       /*
-        Intensity, loudness, tenseness - SHARED WITH GLOTTIS
+       *    Optional - output pure glottal signal with no tract filter
+       */
+      {
+        name: "pure_glottis",
+        defaultValue: 0,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: "a-rate"
+      },
+
+      /*
+        Intensity, loudness, tenseness, frequency - SHARED WITH GLOTTIS - DO NOT CHANGE MANUALLY
         Make sure these are always in sync with values in glottis processor
       */
       {
@@ -473,6 +492,13 @@ class TractProcessor extends AudioWorkletProcessor {
         defaultValue: 0.6,
         minValue: 0,
         maxValue: 1,
+        automationRate: "a-rate"
+      },
+      {
+        name: "frequency",
+        defaultValue: 140,
+        minValue: 20,
+        maxValue: 2000,
         automationRate: "a-rate"
       },
     ];
@@ -502,6 +528,7 @@ class TractProcessor extends AudioWorkletProcessor {
     
 
     this.Tract = {
+      timeInWaveform: 0,
       n: options.processorOptions.n,
       bladeStart: 10,
       tipStart: 32,
@@ -527,11 +554,10 @@ class TractProcessor extends AudioWorkletProcessor {
       noseOutput: 0,
       velumTarget: 0.01,
 
-      loudness: 0, //needed?
       tenseness: 0,
       intensity: 0,
 
-      fIntensity: 0, //intensity of fricatives
+      fIntensity: 1, //intensity of fricatives
       tIntensity: 0.3, //intensity of transients(clicks)
       constrictionIndex: 0,
       constrictionDiameter: 5,
@@ -664,6 +690,9 @@ class TractProcessor extends AudioWorkletProcessor {
       },
 
       runStep: function(glottalOutput, turbulenceNoise, lambda) {
+        var timeStep = 1.0 / sampleRate;
+        this.timeInWaveform += timeStep;
+
         var updateAmplitudes = Math.random() < 0.1;
 
         //mouth
@@ -782,14 +811,16 @@ class TractProcessor extends AudioWorkletProcessor {
         *        Loudness of noise is set by Tract.fIntensity 
         */
       addTurbulenceNoise: function(turbulenceNoise) {
+
         var index = this.constrictionIndex;
         var diameter = this.constrictionDiameter;
 
-        diameter += 0.295; //offset "touch" diameter from Tract peak
+        // diameter += 0.295; //offset "touch" diameter from Tract peak
         if (index < 2 || index > self.Tract.n) return;
         if (diameter <= 0) return;
 
         var intensity = self.Tract.fIntensity;
+
         this.addTurbulenceNoiseAtIndex(
           0.66 * turbulenceNoise * intensity,
           index,
@@ -801,6 +832,7 @@ class TractProcessor extends AudioWorkletProcessor {
         var i = Math.floor(index);
         var delta = index - i;
         turbulenceNoise *= this.getNoiseModulator();
+
         var thinness0 = clamp(8 * (0.7 - diameter), 0, 1);
         var openness = clamp(30 * (diameter - 0.3), 0, 1);
         var noise0 = turbulenceNoise * (1 - delta) * thinness0 * openness;
@@ -819,10 +851,11 @@ class TractProcessor extends AudioWorkletProcessor {
               0,
               Math.sin(Math.PI * 2 * this.timeInWaveform / this.waveformLength)
             );
-        return (
+        const val = (
           this.tenseness * this.intensity * voiced +
           (1 - this.tenseness * this.intensity) * 0.3
         );
+        return val
       },
     };
 
@@ -831,73 +864,80 @@ class TractProcessor extends AudioWorkletProcessor {
 
   // based on code from pink trombone AudioContext.doScriptProcessor()
   process(inputs, outputs, params) {
-    //update a bunch of object properties using audioparam values
-
-    this.Tract.velumTarget = params["velum-target"][0];
-    // this.Tract.noseDiameter[0] = params["velum-target"][0];
-    this.Tract.fIntensity = params["fricative-intensity"][0];
-    this.Tract.tIntensity = params["transient-intensity"][0];
-    this.Tract.constrictionDiameter = params["constriction-diameter"][0];
-    this.Tract.constrictionIndex = params["constriction-index"][0];
-
-    this.Tract.intensity = params["intensity"][0];
-    this.Tract.loudness = params["loudness"][0];
-    this.Tract.tenseness = params["tenseness"][0];
 
     //some voices dont't have inputs defined immediately (why?)
     if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
+    var glottalSignal = inputs[0][0];
 
-    try {
-      var glottalSignal = inputs[0][0];
-
-      var fricativeNoise = inputs[1][0];
-      var outArrayL = outputs[0][0];
-      var outArrayR = outputs[0][1];
-
-      //get sample multiplier values according to pan value (-1 - 1)
-      var panMultR = (1 + params["pan"][0]) / 2;
-      var panMultL = 1 - panMultR;
-
-      var panMax = Math.max(panMultL, panMultR);
-      panMultR /= panMax;
-      panMultL /= panMax;
-
-      for (var j = 0, N = outArrayL.length; j < N; j++) {
-
-        // uncomment these lines to hear pure glottis output (for debugging)
-        // outArrayL[j] = glottalSignal[j] * panMultL
-        // outArrayR[j] = glottalSignal[j] * panMultR
-        // continue
-
-        var lambda1 = j / N;
-        var lambda2 = (j + 0.5) / N;
-        var glottalOutput = glottalSignal[j]
-        var vocalOutput = 0;
-        this.Tract.runStep(glottalOutput, fricativeNoise[j], lambda1);
-        vocalOutput += this.Tract.lipOutput + this.Tract.noseOutput;
-        this.Tract.runStep(glottalOutput, fricativeNoise[j], lambda2);
-        vocalOutput += this.Tract.lipOutput + this.Tract.noseOutput;
-        var samp = vocalOutput * 0.125;
-
-        // //apply panning multiplers to L and R channels
-        outArrayL[j] = samp * panMultL;
-        outArrayR[j] = samp * panMultR;
+    if (params["pure_glottis"][0] == 1) {
+      let outArrayL = outputs[0][0];
+      let outArrayR = outputs[0][1];
+      for (let j = 0, N = outArrayL.length; j < N; j++) {
+        outArrayL[j] = glottalSignal[j];
+        outArrayR[j] = glottalSignal[j];
       }
-
-      this.Tract.finishBlock();
-
-      //post diameter object for main script access
-      this.port.postMessage({
-        v: this.Tract.noseDiameter[0],
-        d: this.Tract.diameter,
-      });
-      
-
-      return true;
-    } catch (e) {
-      console.log(`error from voice tract #${this.voiceNum}:`, e);
-      return false;
     }
+
+    else {
+      try {
+        
+        //update a bunch of object properties using audioparam values
+        this.Tract.velumTarget = params["velum-target"][0];
+        // this.Tract.noseDiameter[0] = params["velum-target"][0];
+        this.Tract.fIntensity = params["fricative-intensity"][0];
+        this.Tract.tIntensity = params["transient-intensity"][0];
+        this.Tract.constrictionDiameter = params["constriction-diameter"][0];
+        this.Tract.constrictionIndex = params["constriction-index"][0];
+        
+        this.Tract.intensity = params["intensity"][0];
+        this.Tract.loudness = params["loudness"][0];
+        this.Tract.tenseness = params["tenseness"][0];
+        this.Tract.waveformLength = 1/params["frequency"][0];
+      
+        var fricativeNoise = inputs[1][0];
+        
+        var outArrayL = outputs[0][0];
+        var outArrayR = outputs[0][1];
+        
+        var panMultR = (1 + params["pan"][0]) / 2;
+        var panMultL = 1 - panMultR;
+        
+        var panMax = Math.max(panMultL, panMultR);
+        panMultR /= panMax;
+        panMultL /= panMax;
+        
+        for (var j = 0, N = outArrayL.length; j < N; j++) {
+          
+          var lambda1 = j / N;
+          var lambda2 = (j + 0.5) / N;
+          var glottalOutput = glottalSignal[j]
+          
+          var vocalOutput = 0;
+          this.Tract.runStep(glottalOutput, fricativeNoise[j], lambda1);
+          vocalOutput += this.Tract.lipOutput + this.Tract.noseOutput;
+          
+          this.Tract.runStep(glottalOutput, fricativeNoise[j], lambda2);
+          vocalOutput += this.Tract.lipOutput + this.Tract.noseOutput;
+          var samp = vocalOutput * 0.125;
+          
+          outArrayL[j] = samp * panMultL;
+          outArrayR[j] = samp * panMultR;
+        }
+        
+        this.Tract.finishBlock();
+        
+        //post diameter object for main script access
+        this.port.postMessage({
+          v: this.Tract.noseDiameter[0],
+          d: this.Tract.diameter,
+        });
+        
+      } catch (e) {
+        console.log(`error from voice tract #${this.voiceNum}:`, e);
+        return false;
+      }
+    }
+    return true;
   }
   processMessage(msg) {
     if ("d" in msg) {

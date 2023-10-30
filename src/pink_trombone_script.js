@@ -1,7 +1,15 @@
-//set maximum allowed # of voices depending on CPU
+/*
+Options: make sure these are set BEFORE calling pinkTromboneVoicesInit!!!
+    maxVoices: number of voices to create - limit this according to processing power
+        Setting too high will causes audible pops!
+    n: default tract length (in segs) of created voices - original Pink Trombone value is 44
+        voice tract length can be changed after initialization using Voice.setN
+*/
 export const options = {
     maxVoices: 1,
-    n: 36
+    n: 44,
+    filterCount: 20,
+    bands_per_octave: 3 //set to 1, 2 or 3 for octave, half-octave or third-octave bands
 };
 
 export let ctxInitiated = false;
@@ -35,9 +43,6 @@ export async function pinkTromboneVoicesInit(module_path, ctx, destination = ctx
         if (UI_DOM_element) {
             let tractDiv = document.createElement('div');
             tractDiv.setAttribute('class', `MPT_voice_UI_container`);
-            // let voiceTitle = document.createElement('h3');
-            // voiceTitle.innerHTML = "HI!";
-            // tractDiv.appendChild(voiceTitle);
             tractCanvas = document.createElement('canvas');
             tractCanvas.style="height: 100%";
             tractCanvas.width=600;
@@ -45,7 +50,7 @@ export async function pinkTromboneVoicesInit(module_path, ctx, destination = ctx
             tractDiv.appendChild(tractCanvas);
             UI_DOM_element.appendChild(tractDiv);
         }
-        voices.push(new Voice(i, ctx, destination, options.n, 10, tractCanvas));
+        voices.push(new Voice(i, ctx, destination, options.n, options.filterCount, tractCanvas));
     }
     
     ctx.resume(); //resume in case paused by default
@@ -65,7 +70,9 @@ args:
     tractCanvas: the canvas HTML element to draw the tract onto (optional)
 */
 class Voice {
-    constructor(i, ctx, destination, n=44, glottisFilterNodeCount = 10, tractCanvas = null) {
+    constructor(i, ctx, destination, n=44, glottisFilterNodeCount = 0, tractCanvas = null) {
+
+        this.ctx = ctx;
 
         this.i = i; //identifying number of this voice (counting from 0)
         this.n = n; //tract segment count
@@ -87,6 +94,10 @@ class Voice {
             outputChannelCount: [2],
             processorOptions: { voiceNum: i, n: n }
         });
+
+        //a node to get glottis frequency domain data
+        this.analyser = new AnalyserNode(ctx);
+        this.analyser.fftSize = 8192;
 
         //see pinktrombone AudioSystem.init and AudioSystem.startSound
         let sampleRate = ctx.sampleRate;
@@ -113,15 +124,20 @@ class Voice {
         noiseNode.connect(fricativeFilter);
         
         aspirateFilter.connect(this.glottis, 0, 0);
+        fricativeFilter.connect(this.tract, 0, 1);
 
         //insert filters between glottis and tract if glottisFilterNodeCount is defined
         if (glottisFilterNodeCount) { 
             for (let g = 0; g < glottisFilterNodeCount; g++) {
                 let filterNode = new BiquadFilterNode(ctx);
-                filterNode.harmonicNum = g + 1;
+                if (options.bands_per_octave == 1) 
+                    {filterNode.frequencyRatio = g + 1; filterNode.Q.value = 1.414;}
+                else if (options.bands_per_octave == 2) 
+                    {filterNode.frequencyRatio = Math.pow(1.4142, g); filterNode.Q.value = 2.871;}
+                else if (options.bands_per_octave == 3) 
+                    {filterNode.frequencyRatio = Math.pow(1.259921, g); filterNode.Q.value = 4.36;}
+                    filterNode.frequency.value = this.glottis.parameters.get('frequency').value * filterNode.frequencyRatio;
                 filterNode.type = g == 0 ? 'lowshelf' : g == (glottisFilterNodeCount - 1) ? "highshelf" : "peaking";
-                filterNode.frequency.value = 0;
-                filterNode.Q.value = .7071;
                 filterNode.gain.value = 0;
                 this.glottisFilters.push(filterNode);
 
@@ -130,21 +146,24 @@ class Voice {
 
             this.glottis.connect(this.glottisFilters[0]);
             this.glottisFilters[this.glottisFilters.length - 1].connect(this.tract);
+            this.glottisFilters[this.glottisFilters.length - 1].connect(this.analyser);
             
-        } else this.glottis.connect(this.tract, 0, 0); // no glottis filters - connect glottis -> tract directly
-        
-        fricativeFilter.connect(this.tract, 0, 1);
+        } else {
+            this.glottis.connect(this.tract, 0, 0); // no glottis filters - connect glottis -> tract directly
+            this.glottis.connect(this.analyser);
+        }
 
         this.tract.connect(destination) //connect node to supplied/default destination node
 
-        // ensure glottis + tract loudness, intensity, tenseness values are always in sync
-        const self = this;
+        // ensure glottis + tract loudness, intensity, tenseness values are always in sync (for fricatives)
+        const self = this; //to refer to this Voice object from within callbacks
         this.glottis.port.onmessage = function(msg) {
             let data = msg.data;
 
             self.tract.parameters.get('loudness').value = data.l;
             self.tract.parameters.get('intensity').value = data.i;
             self.tract.parameters.get('tenseness').value = data.t;
+            self.tract.parameters.get('frequency').value = data.f;
 
             self.excitation = msg.data.exc;
         }
@@ -155,9 +174,16 @@ class Voice {
 
     }
 
-    applyPreset(preset) {
-        if (!(preset instanceof Voice_preset)) throw new Error("Argument must be a Voice_preset class object.");
-        this.voicePreset = preset;
+    apply_options(options) {
+        if (!(options instanceof Voice_options)) throw new Error("Argument must be a Voice_options class object.");
+        if (options.n != this.n) this.setN(options.n);
+        this.glottis.port.postMessage({exc: options.excitation})
+        this.setFrequency(options.frequency);
+        this.glottis.parameters.get('base-tenseness').value = options.tenseness;
+        for (let f of this.glottisFilters) f.gain.value = 0; //default to 0 gain (no filter)
+        for (let i in options.glottisFilterArray) {
+            if (this.glottisFilters[i]) this.glottisFilters[i].gain.value = options.glottisFilterArray[i];
+        }
     }
 
     setN(n) {
@@ -175,12 +201,18 @@ class Voice {
     setFrequency(f) {
         this.glottis.parameters.get('frequency').value = f;
         for (const gFilter of this.glottisFilters) {
-            gFilter.frequency.value = f * (gFilter.harmonicNum + 1);
+            gFilter.frequency.value = f * (gFilter.frequencyRatio);
         }
     }
 
+    getFrequencyData() {
+        const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        this.analyser.getByteFrequencyData(dataArray);
+        return dataArray;
+    }
+
     draw() {
-        this.tractUI.draw();
+        if (this.tractUI) this.tractUI.draw();
     }
 
 }
@@ -193,11 +225,12 @@ Voice options - timbral properties for a single MPT voice:
     n: vocal tract segment count - rec 44 for male, 36 for female
 */
 export class Voice_options {
-    constructor(frequency, tenseness, n, glottisFilterArray) {
+    constructor(frequency, tenseness, n, glottisFilterArray=[], custom_excitation) {
         this.frequency = frequency;
         this.tenseness = tenseness;
         this.glottisFilterArray = glottisFilterArray;
         this.n = n;
+        this.excitation = custom_excitation;
     }
 }
 
@@ -456,7 +489,7 @@ class TractUI {
         this.drawText(this.voice.n*0.95, 0.8+0.8*this.voice.diameters[this.voice.n-1], " lip"); 
 
         //this.drawPositions();
-        this.drawBackground();
+        this.drawBackground();        
     }
     
     drawBackground()
@@ -727,6 +760,8 @@ class TractUI {
                 var y = touch.y;        
                 var index = this.getIndex(x,y);
                 var diameter = this.getDiameter(x,y);
+                this.voice.tract.parameters.get('constriction-index').value = index;
+                this.voice.tract.parameters.get('constriction-diameter').value = diameter;
                 // if (index >= this.tongueLowerIndexBound-4 && index<=this.tongueUpperIndexBound+4 
                 //     && diameter >= this.innerTongueControlRadius-0.5 && diameter <= this.outerTongueControlRadius+0.5)
                 // {
@@ -742,6 +777,8 @@ class TractUI {
             var y = this.tongueTouch.y;        
             var index = this.getIndex(x,y);
             var diameter = this.getDiameter(x,y);
+            this.voice.tract.parameters.get('constriction-index').value = index;
+            this.voice.tract.parameters.get('constriction-diameter').value = diameter;
             var fromPoint = (this.outerTongueControlRadius-diameter)/(this.outerTongueControlRadius-this.innerTongueControlRadius);
             fromPoint = Math.clamp(fromPoint, 0, 1);
             fromPoint = Math.pow(fromPoint, 0.58) - 0.2*(fromPoint*fromPoint-fromPoint); 
