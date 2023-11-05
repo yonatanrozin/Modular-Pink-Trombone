@@ -188,13 +188,32 @@ class Voice {
 
     setN(n) {
         this.n = n;
-        this.tract.port.postMessage({n:n});
+        this.tract.parameters.get('n').value = n;
         this.tractUI.init(); //reset UI with new n value
     }
 
-    setDiameters(d, targetOnly=false) {
-        this.tract.port.postMessage({td: d});
-        if (!targetOnly) this.tract.port.postMessage({d: d});
+    setDiameters(d, targetOnly = false) {
+        let resampled;
+        if (d.length == this.n) {
+            resampled = d;
+        } else {
+            resampled = new Float64Array(this.n).map((v, i) => {
+
+                let i_scaled = i / (this.n-1) * (d.length-1); //get value location in provided diameters
+                let interpVal = i_scaled % 1; //get location between indexes
+                if (interpVal == 0) return d[i_scaled];
+
+                let i1 = Math.floor(i_scaled);
+                let i2 = Math.floor(i_scaled) + 1;
+
+                return d[i1]*(1-interpVal) + d[i2]*interpVal
+                
+            });
+            console.log(d, resampled)
+        }
+
+        this.tract.port.postMessage({td: resampled});
+        if (!targetOnly) this.tract.port.postMessage({d: resampled});
     }
 
     //sets the fundamental frequency of the glottal output and adjusts frequency of glottis filters proportionally

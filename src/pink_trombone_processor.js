@@ -391,6 +391,14 @@ class GlottisProcessor extends AudioWorkletProcessor {
 class TractProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
+      {
+        name: "n",
+        defaultValue: 44,
+        minValue: 30,
+        maxValue: 44,
+        automationRate: "a-rate"
+      },
+
       /*
        *    New to modular_pink_trombone: fricative intensity
        *    Sets volume of fricatives (white noise due to tract constriction)
@@ -880,6 +888,12 @@ class TractProcessor extends AudioWorkletProcessor {
 
     else {
       try {
+
+        const newN = Math.floor(params['n'][0]);
+        if (newN != this.Tract.n) {
+          this.Tract.n = newN;
+          this.Tract.init();
+        }
         
         //update a bunch of object properties using audioparam values
         this.Tract.velumTarget = params["velum-target"][0];
