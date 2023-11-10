@@ -244,12 +244,12 @@ Voice options - timbral properties for a single MPT voice:
     n: vocal tract segment count - rec 44 for male, 36 for female
 */
 export class Voice_options {
-    constructor(frequency, tenseness, n, glottisFilterArray=[], custom_excitation) {
+    constructor(frequency, tenseness, n, glottisFilterArray=[]) {
         this.frequency = frequency;
         this.tenseness = tenseness;
         this.glottisFilterArray = glottisFilterArray;
         this.n = n;
-        this.excitation = custom_excitation;
+        // this.excitation = custom_excitation;
     }
 }
 

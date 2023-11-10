@@ -124,6 +124,13 @@ class GlottisProcessor extends AudioWorkletProcessor {
         maxValue: 100,
         automationRate: "a-rate"
       },
+      {
+        name: "smoothing",
+        defaultValue: 0,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: "a-rate"
+      },
     ];
   }
 
@@ -163,6 +170,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
       isTouched: false,
       aIntensity: 0,
 
+      smoothing: 0,
       lastSampleValue: 0,
 
       useCustomWave: false,
@@ -298,7 +306,6 @@ class GlottisProcessor extends AudioWorkletProcessor {
           i = Math.floor(i);
           output = i < this.customWave.length - 1 ? this.customWave[i]*interpVal + this.customWave[i+1]*(1-interpVal) : this.customWave[i]
           output = output * this.intensity * this.loudness;
-          output = this.lastSampleValue * .75 + output * .25;
         }
         else {
           if (t > this.Te)
@@ -308,7 +315,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
           }
 
           output = output * this.intensity * this.loudness;
-          output = this.lastSampleValue * .75 + output * .25;
+          output = this.lastSampleValue * this.smoothing + output * (1 - this.smoothing);
 
           this.customWave[Math.floor(t * (this.customWave.length-1))] = output;
         }
@@ -331,6 +338,8 @@ class GlottisProcessor extends AudioWorkletProcessor {
     this.Glottis.loudness = params["loudness"][0];
     this.Glottis.vibratoAmount = params["vibrato-amount"][0];
     this.Glottis.vibratoFrequency = params["vibrato-frequency"][0];
+
+    this.Glottis.smoothing = Math.sqrt(params["smoothing"][0]) * .95;
 
     //some voices dont't have inputs defined immediately (why?)
     if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
