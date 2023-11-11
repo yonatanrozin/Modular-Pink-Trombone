@@ -577,20 +577,20 @@ class TractUI {
         //?
         this.drawText(4.5, 0.37, 'h');
         
-        if (Glottis.isTouched || alwaysVoice)
-        {
-            //voiced consonants
-            this.drawText(31.5, fricatives, 'ʒ');     
-            this.drawText(36, fricatives, 'z');
-            this.drawText(41, fricatives, 'v');
-            this.drawText(22, stops, 'g');
-            this.drawText(36, stops, 'd');
-            this.drawText(41, stops, 'b');
-            this.drawText(22, nasals, 'ŋ');
-            this.drawText(36, nasals, 'n');
-            this.drawText(41, nasals, 'm');  
-        }
-        else
+        // if (Glottis.isTouched || alwaysVoice)
+        // {
+        //     //voiced consonants
+        //     this.drawText(31.5, fricatives, 'ʒ');     
+        //     this.drawText(36, fricatives, 'z');
+        //     this.drawText(41, fricatives, 'v');
+        //     this.drawText(22, stops, 'g');
+        //     this.drawText(36, stops, 'd');
+        //     this.drawText(41, stops, 'b');
+        //     this.drawText(22, nasals, 'ŋ');
+        //     this.drawText(36, nasals, 'n');
+        //     this.drawText(41, nasals, 'm');  
+        // }
+        // else
         {
             //unvoiced consonants
             this.drawText(31.5, fricatives, 'ʃ'); 
@@ -683,27 +683,27 @@ class TractUI {
         this.ctx.fillStyle = "orchid";
     }
     
-    drawPitchControl()
-    {
-        var w=9;
-        var h=15;
-        if (Glottis.x)
-        {
-            this.ctx.lineWidth = 4;
-            this.ctx.strokeStyle = "orchid";
-            this.ctx.globalAlpha = 0.7;
-            this.ctx.beginPath();
-            this.ctx.moveTo(Glottis.x-w, Glottis.y-h);
-            this.ctx.lineTo(Glottis.x+w, Glottis.y-h);
-            this.ctx.lineTo(Glottis.x+w, Glottis.y+h);
-            this.ctx.lineTo(Glottis.x-w, Glottis.y+h);                    
-            this.ctx.closePath();            
-            this.ctx.stroke();    
-            this.ctx.globalAlpha = 0.15;
-            this.ctx.fill();            
-            this.ctx.globalAlpha = 1.0;
-        }
-    }
+    // drawPitchControl()
+    // {
+    //     var w=9;
+    //     var h=15;
+    //     if (Glottis.x)
+    //     {
+    //         this.ctx.lineWidth = 4;
+    //         this.ctx.strokeStyle = "orchid";
+    //         this.ctx.globalAlpha = 0.7;
+    //         this.ctx.beginPath();
+    //         this.ctx.moveTo(Glottis.x-w, Glottis.y-h);
+    //         this.ctx.lineTo(Glottis.x+w, Glottis.y-h);
+    //         this.ctx.lineTo(Glottis.x+w, Glottis.y+h);
+    //         this.ctx.lineTo(Glottis.x-w, Glottis.y+h);                    
+    //         this.ctx.closePath();            
+    //         this.ctx.stroke();    
+    //         this.ctx.globalAlpha = 0.15;
+    //         this.ctx.fill();            
+    //         this.ctx.globalAlpha = 1.0;
+    //     }
+    // }
     
     setRestDiameter()
     {
