@@ -527,7 +527,7 @@ class TractProcessor extends AudioWorkletProcessor {
     this.blockTime = 128 / sampleRate; //from pinktrombone AudioSystem.init()
     this.voiceNum = options.processorOptions.voiceNum;
 
-    var self = this; //to refer to this WorkletProcessor from inside nested objects/callbacks
+    const self = this; //to refer to this WorkletProcessor from inside nested objects/callbacks
 
     this.noise = new Noise(); //import noise module instance
 
@@ -596,6 +596,8 @@ class TractProcessor extends AudioWorkletProcessor {
             i
           ] = this.newDiameter[i] = diameter;
         }
+        
+        self.port.postMessage({restDiameter: this.restDiameter});
         this.R = new Float64Array(this.n);
         this.L = new Float64Array(this.n);
         this.reflection = new Float64Array(this.n + 1);
