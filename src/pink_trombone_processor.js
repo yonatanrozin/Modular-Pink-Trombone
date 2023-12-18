@@ -401,6 +401,14 @@ class TractProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       {
+        name: "gain",
+        defaultValue: 1,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: "a-rate"
+      },
+
+      {
         name: "n",
         defaultValue: 44,
         minValue: 30,
@@ -930,6 +938,8 @@ class TractProcessor extends AudioWorkletProcessor {
         var panMax = Math.max(panMultL, panMultR);
         panMultR /= panMax;
         panMultL /= panMax;
+
+        const gainVal = Math.pow(params['gain'][0], 2);
         
         for (var j = 0, N = outArrayL.length; j < N; j++) {
           
@@ -943,7 +953,7 @@ class TractProcessor extends AudioWorkletProcessor {
           
           this.Tract.runStep(glottalOutput, fricativeNoise[j], lambda2);
           vocalOutput += this.Tract.lipOutput + this.Tract.noseOutput;
-          var samp = vocalOutput * 0.125;
+          var samp = vocalOutput * 0.125 * gainVal;
           
           outArrayL[j] = samp * panMultL;
           outArrayR[j] = samp * panMultR;
@@ -976,7 +986,6 @@ class TractProcessor extends AudioWorkletProcessor {
     }
   }
 }
-
 
 registerProcessor("tract", TractProcessor);
 registerProcessor("glottis", GlottisProcessor);
