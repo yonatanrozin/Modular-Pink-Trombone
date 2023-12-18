@@ -131,6 +131,13 @@ class GlottisProcessor extends AudioWorkletProcessor {
         maxValue: 1,
         automationRate: "a-rate"
       },
+      {
+        name: "pitchbend",
+        defaultValue: 1,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: "a-rate"
+      }
     ];
   }
 
@@ -333,7 +340,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
     //update a bunch of object properties using audioparam values
     this.Glottis.UITenseness =
       params["tenseness"][0] * params["base-tenseness"][0];
-    this.Glottis.UIFrequency = params["frequency"][0];
+    this.Glottis.UIFrequency = params["frequency"][0] * (params['pitchbend'][0] + 1) ;
     this.Glottis.intensity = params["intensity"][0];
     this.Glottis.loudness = params["loudness"][0];
     this.Glottis.vibratoAmount = params["vibrato-amount"][0];
