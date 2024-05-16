@@ -4,7 +4,6 @@ export type RPT_Voice_Preset = {
     n: number,
     frequency: number,
     tenseness: number,
-    filters: number[]
 }
 
 export default function Tract(props: {voice: RPT_Voice, canvasRef: React.RefObject<HTMLCanvasElement>}) {
@@ -63,8 +62,6 @@ export class RPT_Voice {
 
     UI: TractUI;
 
-    newDiametersCallback?: Function;
-
     //create a new voice using the given audiocontext and destinationNOde (default ctx destination)
     constructor(name: string | number, ctx: AudioContext, destination: AudioNode = ctx.destination) {
         this.name = name;
@@ -88,7 +85,6 @@ export class RPT_Voice {
         this.tract.port.onmessage = (e) => {
             this.d = e.data.d; 
             this.v = e.data.v;
-            this.newDiametersCallback?.();
         };
 
         const sampleRate = this.ctx.sampleRate;
@@ -165,10 +161,6 @@ export class RPT_Voice {
         
         this.tract.port.postMessage({td: resampled});
         if (!targetOnly) this.tract.port.postMessage({d: resampled});
-    }
-
-    onNewDiameters(callback: Function | undefined) {
-        this.newDiametersCallback = callback;
     }
 }
 
