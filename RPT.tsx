@@ -1,6 +1,4 @@
 import { useEffect, useRef, MouseEvent } from "react";
-import { constrain, map } from "../utils";
-import { Recording_Frame } from "../RecordingStudio";
 
 export type RPT_Voice_Preset = {
     n: number,
@@ -167,22 +165,6 @@ export class RPT_Voice {
         
         this.tract.port.postMessage({td: resampled});
         if (!targetOnly) this.tract.port.postMessage({d: resampled});
-    }
-
-    sonifyFrame(frame: Recording_Frame, adj?: {i: number, d: number}) {
-        const n = this.tract.parameters.get("n")!.value;
-        this.tract.parameters.get("constriction-index")!.value = frame.ci/44 * n || 0;
-        this.tract.parameters.get("constriction-diameter")!.value = frame.cd || 0;
-        this.glottis.parameters.get("intensity")!.value = frame.i;
-        this.glottis.parameters.get("tenseness-mult")!.value = frame.t;
-        this.tract.parameters.get("velum-target")!.value = frame.v;
-        this.tract.parameters.get("fricative-strength")!.value = frame.n;
-
-        this.tract.parameters.get("tongue-index")!.value = 
-            adj && frame.ta ? map(frame.ta, 0, 1, this.tongue.i, adj.i/44 * n) : this.tongue.i;
-        this.tract.parameters.get("tongue-diameter")!.value = 
-            adj && frame.ta ? map(frame.ta, 0, 1, this.tongue.d, adj.d/44 * n) : this.tongue.d;
-
     }
 
     onNewDiameters(callback: Function | undefined) {
@@ -737,3 +719,7 @@ export class TractUI {
     }
     
 }
+
+function constrain(n: number, low: number, high: number): number {
+    return Math.max(Math.min(n, high), low);
+};
