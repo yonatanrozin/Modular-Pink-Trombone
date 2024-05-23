@@ -11,7 +11,7 @@ A modular, polyphonic refactorization of [Pink Trombone](https://dood.al/pinktro
 - Once the AudioContext is created, you must load the AudioWorklet modules, defined inside ```pink_trombone_processor.js```. You can do this inside a ```useEffect``` with the AudioContext state as a dependency.
   - If you cloned your repo into ```src```: ```await <yourAudioContext>.audioWorklet.addModule(new URL('<path/to/pink_trombone_processor.js>', import.meta.url));```
     - The above example is for projects using Vite. It may have to be changed for other React frameworks.
-  - Alternatively, move ```pink_trombone_processor.js``` into your public folder and use ```await <yourAudioContext>.audioWorklet.addModule('<path/to/pink_trombone_processor.js>');```
+  - Alternatively, move ```pink_trombone_processor.js``` and ```noise.js``` into your public folder and use ```await <yourAudioContext>.audioWorklet.addModule('<path/to/pink_trombone_processor.js>');```
     - __The path used in this example should be relative to the public directory!__
     
 ### RPT Voice(s)
@@ -42,6 +42,7 @@ The Tract module filters the glottal source output by the Glottis using several 
 - Speech AudioParams - manipulated over time to create speech:
   - ```tongue-index``` + ```tongue-diameter``` - the index + diameter of the tongue position, relevant for vowel production. In the GUI, these are manipulated by dragging the pink circle around the "tongue control" area.
   - ```constriction-index``` + ```constriction-diameter``` - the index + diameter of the tongue constriction, relevant for producing most consonants. In the GUI, these are manipulated by clicking/dragging around the "oral cavity" area.
+  - ```lip-diameter``` - the diameter of the opening of the lips, used for producing O and U vowels.
   - ```velum-target``` (float 0.01 - 0.4, in cm?) - the width of the velum, which connects the oral and nasal tracts. Generally stays closed but opens for nasal consonants such as N and M.
   - ```fricative-strength``` (float 0+) - the volume of fricatives, white noise produced by tight tongue constrictions for consonants such as S and V.
   - ```movement-speed``` (float 0+, not required for speech) - the speed with which the tract measurements smoothly approach their target values. Set to a negative number for instant or 0 to freeze.
