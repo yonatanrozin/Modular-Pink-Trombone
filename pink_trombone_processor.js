@@ -347,8 +347,9 @@ class TractProcessor extends AudioWorkletProcessor {
 
       {
         name: "lip-diameter",
-        defaultValue: 3,
-        minValue: 0
+        defaultValue: 1.5,
+        minValue: 0,
+        maxValue: 1.5
       },
       //tract movement speed, determines how fast tract diameters approach their targets. Set to -1 for instant.
       {

@@ -6,17 +6,18 @@ export type RPT_Voice_Preset = {
     tenseness: number,
 }
 
-export default function Tract(props: {voice: RPT_Voice, canvasRef: React.RefObject<HTMLCanvasElement>}) {
+export default function Tract(props: {voice: RPT_Voice, cnvRef: React.RefObject<HTMLCanvasElement>}) {
 
-    const {voice, canvasRef} = props;
+    const {voice, cnvRef} = props;
 
     const animationRef = useRef(0);
 
     //on component mount, pass 2D render context to voice UI
     useEffect(() => {
-        if (!voice) return;
-        voice.UI.cnv = canvasRef.current!;
-        voice.UI.ctx = canvasRef.current?.getContext('2d')!;
+        console.log(cnvRef?.current);
+        if (!voice || !cnvRef.current) return;
+        voice.UI.cnv = cnvRef.current;
+        voice.UI.ctx = cnvRef.current?.getContext('2d')!;
 
         function getNewFrame() {
             voice!.UI.draw();
@@ -25,7 +26,7 @@ export default function Tract(props: {voice: RPT_Voice, canvasRef: React.RefObje
         getNewFrame();
 
         return () => cancelAnimationFrame(animationRef.current);
-    }, [voice]);
+    }, [voice, cnvRef]);
 
     function startMouse(e: MouseEvent) {
         e.preventDefault();
@@ -38,7 +39,7 @@ export default function Tract(props: {voice: RPT_Voice, canvasRef: React.RefObje
         voice?.UI.moveMouse(e);
     }
 
-    return <canvas className="tractCanvas" width={600} height={600} ref={canvasRef} 
+    return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
         onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
 }
 
