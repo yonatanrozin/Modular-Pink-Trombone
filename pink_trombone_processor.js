@@ -318,7 +318,7 @@ class TractProcessor extends AudioWorkletProcessor {
         name: "n",
         defaultValue: 44,
         minValue: 30,
-        maxValue: 44,
+        maxValue: 60,
         automationRate: "k-rate"
       },
       //velum width, opens/closes the nasal tract, required for letters such as M and N
@@ -334,7 +334,7 @@ class TractProcessor extends AudioWorkletProcessor {
         name: "constriction-index",
         defaultValue: null,
         minValue: 0,
-        maxValue: 44,
+        // maxValue: 44,
         automationRate: "a-rate"
       },
       //vertical location of constriction, used to simulate a mouse held on the UI
@@ -343,6 +343,12 @@ class TractProcessor extends AudioWorkletProcessor {
         defaultValue: null,
         maxValue: 5,
         automationRate: "a-rate"
+      },
+
+      {
+        name: "lip-diameter",
+        defaultValue: 3,
+        minValue: 0
       },
       //tract movement speed, determines how fast tract diameters approach their targets. Set to -1 for instant.
       {
@@ -400,7 +406,7 @@ class TractProcessor extends AudioWorkletProcessor {
   lipOutput = 0;
   noseOutput = 0;
   velumTarget = 0.01;
-  fricative_strength = 2;
+  fricative_strength = 1;
 
   //Tract used to reference AudioSystem.blockTime, impossible from WorkletProcessor scope
   //so we calculate it here instead using <outputBufferLength>/sampleRate.
@@ -408,6 +414,11 @@ class TractProcessor extends AudioWorkletProcessor {
 
   constrictionIndex = 0;
   constrictionDiameter = 0;
+
+  tongueIndex = 12.9;
+  tongueDiameter = 2.43;
+
+  lipDiameter = 5;
 
   constructor(options) {
     super();
@@ -418,6 +429,7 @@ class TractProcessor extends AudioWorkletProcessor {
   }
 
   init(n = 44) {
+
     this.n = n;
     this.bladeStart = Math.floor(10 * this.n/44);
     this.tipStart = Math.floor(32 * this.n/44);
@@ -426,13 +438,16 @@ class TractProcessor extends AudioWorkletProcessor {
     this.diameter = new Float64Array(this.n);
     this.targetDiameter = new Float64Array(this.n);
 
-    for (let i = 0; i < this.n; i++) {
-        let diameter = 0;
-        if (i < 7 * this.n / 44-0.5) diameter = 0.6;
-        else if (i < 12 * this.n / 44) diameter = 1.1;
-        else diameter = 1.5;
-        this.diameter[i] = this.targetDiameter[i] = diameter;
-    }
+    this.getTargetDiameters();
+    for (let i = 0; i < this.targetDiameter.length; i++) this.diameter[i] = this.targetDiameter[i]
+
+    // for (let i = 0; i < this.n; i++) {
+    //     let diameter = 0;
+    //     if (i < 7 * this.n / 44-0.5) diameter = 0.6;
+    //     else if (i < 12 * this.n / 44) diameter = 1.1;
+    //     else diameter = 1.5;
+    //     this.diameter[i] = this.targetDiameter[i] = this.diameter[i] || diameter;
+    // }
     
     this.R = new Float64Array(this.n);
     this.L = new Float64Array(this.n);
@@ -634,7 +649,7 @@ class TractProcessor extends AudioWorkletProcessor {
     this.calculateReflections();
   }
 
-  getTargetDiameter() {
+  getTargetDiameters() {
 
     try {
 
@@ -655,9 +670,12 @@ class TractProcessor extends AudioWorkletProcessor {
         if (i == this.bladeStart || i == this.lipStart-2) curve *= 0.94;               
         this.targetDiameter[i] = 1.5 - curve;
       }
-      
+
+      //inscribe tongue constriction
       let index = this.constrictionIndex;
       let dia = this.constrictionDiameter;
+
+      if (!index && !dia) return;
       
       if (index > this.noseStart && dia < -0.8) this.velumTarget = 0.4;
       if (dia < -0.85 - 0.8) return;
@@ -665,9 +683,7 @@ class TractProcessor extends AudioWorkletProcessor {
       if (dia < 0) dia = 0;     
       
       let width = map(index, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
-      // if (index < 25/44*this.n) width = 10;
-      // else if (index >= this.tipStart) width = 5;
-      // else width = 10- 5*(index-25)/(this.tipStart-25);
+
       if (index >= 2 && index < this.n && dia < 3) {
 
         var intIndex = Math.round(index);
@@ -684,6 +700,26 @@ class TractProcessor extends AudioWorkletProcessor {
           }
         }
       }
+
+      //inscribe lip constriction
+      let lIndex = this.n - 2;
+      let lDia = this.lipDiameter;
+      let lWidth = 5;
+
+      var intIndex = Math.round(lIndex);
+      for (var i=-Math.ceil(lWidth)-1; i<lWidth+1; i++) {   
+        if (intIndex+i<0 || intIndex+i >= this.n) continue;
+        var relpos = (intIndex+i) - lIndex;
+        relpos = Math.abs(relpos)-0.5;
+        var shrink;
+        if (relpos <= 0) shrink = 0;
+        else if (relpos > lWidth) shrink = 1;
+        else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / lWidth)); //0.5 * ...
+        if (lDia < this.targetDiameter[intIndex+i]) {
+          this.targetDiameter[intIndex+i] = lDia + (this.targetDiameter[intIndex+i]-lDia)*shrink;
+        }
+      }
+    
     } catch (e) {console.log(e)}
   }
         
@@ -709,6 +745,8 @@ class TractProcessor extends AudioWorkletProcessor {
 
       const cIndNew = params["constriction-index"][0];
       const cDiaNew = params["constriction-diameter"][0] + 0.3;
+
+      const lDiaNew = params["lip-diameter"][0];
       
       const tIndNew = params["tongue-index"][0]
       const tDiaNew = params["tongue-diameter"][0];
@@ -717,13 +755,17 @@ class TractProcessor extends AudioWorkletProcessor {
       this.fricative_strength = params["fricative-strength"][0];
 
       if (tIndNew != this.tongueIndex || tDiaNew != this.tongueDiameter ||
-        cIndNew != this.constrictionIndex || cDiaNew != this.constrictionDiameter) 
+        cIndNew != this.constrictionIndex || cDiaNew != this.constrictionDiameter ||
+        lDiaNew != this.lipDiameter
+      ) 
       {
         this.tongueIndex = tIndNew;
         this.tongueDiameter = tDiaNew;
         this.constrictionIndex = cIndNew;
         this.constrictionDiameter = cDiaNew;
-        this.getTargetDiameter();
+        this.lipDiameter = lDiaNew;
+
+        this.getTargetDiameters();
       }
 
 
