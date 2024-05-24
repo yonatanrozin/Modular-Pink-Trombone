@@ -79,7 +79,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
       //intensity: volume of voiced (pitched) aspect of the voice. Does not affect fricatives and transients.
       {
         name: "intensity",
-        defaultValue: 1,
+        defaultValue: 0,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
