@@ -6,37 +6,38 @@ export type RPT_Voice_Preset = {
     tenseness: number,
 }
 
-export default function Tract(props: {voice: RPT_Voice, cnvRef: React.RefObject<HTMLCanvasElement>}) {
+export default function Tract(props: {voice: RPT_Voice}) {
 
-    const {voice, cnvRef} = props;
+    const {voice} = props;
+
+    const cnvRef = useRef<HTMLCanvasElement>(null);
 
     const animationRef = useRef(0);
 
     //on component mount, pass 2D render context to voice UI
     useEffect(() => {
-        console.log(cnvRef?.current);
-        if (!voice || !cnvRef.current) return;
+        if (!cnvRef.current) return;
         voice.UI.cnv = cnvRef.current;
         voice.UI.ctx = cnvRef.current?.getContext('2d')!;
 
         function getNewFrame() {
-            voice!.UI.draw();
+            voice.UI.draw();
             animationRef.current = requestAnimationFrame(getNewFrame);
         }
         getNewFrame();
 
         return () => cancelAnimationFrame(animationRef.current);
-    }, [voice, cnvRef]);
+    }, [voice, cnvRef.current]);
 
     function startMouse(e: MouseEvent) {
         e.preventDefault();
-        voice?.UI.startMouse(e);
+        voice.UI.startMouse(e);
     }
     function endMouse() {
-        voice?.UI.endMouse();
+        voice.UI.endMouse();
     }
     function moveMouse(e: MouseEvent) {
-        voice?.UI.moveMouse(e);
+        voice.UI.moveMouse(e);
     }
 
     return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
@@ -58,7 +59,6 @@ export class RPT_Voice {
 
     d?: Float64Array;
     v: number = 0.4;
-    constriction?: {i: number, d: number};
     tongue = {i: 12.9, d: 2.43};
 
     UI: TractUI;
@@ -571,18 +571,17 @@ export class TractUI {
         //?
         this.drawText(4.5/44*this.n, 0.37, 'H');
         
-        // if (this.voice.glottis.parameters.get("intensity")!.value > 0) {
-            //voiced consonants
-            this.drawText(33/44*this.n, fricatives, 'ʒ/ʃ');     
-            this.drawText(36.5/44*this.n, fricatives, 'z/s');
-            this.drawText(39.5/44*this.n, fricatives, 'v/f');
-            this.drawText(22/44*this.n, stops, 'g/k');
-            this.drawText(35/44*this.n, stops, 'd/t');
-            this.drawText(41.5/44*this.n, stops, 'b/p');
-            this.drawText(22/44*this.n, nasals, 'ŋ');
-            this.drawText(35/44*this.n, nasals, 'n');
-            this.drawText(41/44*this.n, nasals, 'm');  
-        // } 
+        //voiced consonants
+        this.drawText(33/44*this.n, fricatives, 'ʒ/ʃ');     
+        this.drawText(36.5/44*this.n, fricatives, 'z/s');
+        this.drawText(39.5/44*this.n, fricatives, 'v/f');
+        this.drawText(22/44*this.n, stops, 'g/k');
+        this.drawText(35/44*this.n, stops, 'd/t');
+        this.drawText(41.5/44*this.n, stops, 'b/p');
+        this.drawText(22/44*this.n, nasals, 'ŋ');
+        this.drawText(35/44*this.n, nasals, 'n');
+        this.drawText(41/44*this.n, nasals, 'm');  
+
     }
 
     getIndex(x: number, y: number) {
@@ -591,6 +590,7 @@ export class TractUI {
         while (angle> 0) angle -= 2*Math.PI;
         return (Math.PI + angle - this.angleOffset)*(this.lipStart-1) / (this.angleScale*Math.PI);
     }
+
     getDiameter(x: number, y: number)
     {
         var xx = x-this.originX; var yy = y-this.originY;
@@ -679,7 +679,6 @@ export class TractUI {
             if (diameter < -0.85-this.noseOffset) continue;
             diameter -= 0.3;
             if (diameter<0) diameter = 0;       
-            this.voice.constriction = index != undefined ? {i: index, d: diameter!} : undefined;  
             var width=2;
             if (index<25) width = 10;
             else if (index>=this.tipStart) width= 5;

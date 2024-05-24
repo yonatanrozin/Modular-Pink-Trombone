@@ -2,28 +2,28 @@
 A modular, polyphonic refactorization of [Pink Trombone](https://dood.al/pinktrombone/) and a ```<Tract>``` component, for use in React apps.
 
 ## Installation
-- ```git clone``` this repo into a desired location in your project directory, likely somewhere within ```src```
+- ```git clone``` this repo into a desired location in your project directory, likely somewhere within ```src```. The project should have React installed already.
 
 ## Usage
 
 ### Adding AudioWorklet Modules
 - Create a ```new AudioContext()``` or use an existing one. You may want to store it in a component state.
 - Once the AudioContext is created, you must load the AudioWorklet modules, defined inside ```pink_trombone_processor.js```. You can do this inside a ```useEffect``` with the AudioContext state as a dependency.
-  - If you cloned your repo into ```src```: ```await <yourAudioContext>.audioWorklet.addModule(new URL('<path/to/pink_trombone_processor.js>', import.meta.url));```
+  - If you cloned your repo into ```src```: ```await <yourAudioContext>.audioWorklet.addModule(new URL('path/to/pink_trombone_processor.js', import.meta.url));```
     - The above example is for projects using Vite. It may have to be changed for other React frameworks.
-  - Alternatively, move ```pink_trombone_processor.js``` and ```noise.js``` into your public folder and use ```await <yourAudioContext>.audioWorklet.addModule('<path/to/pink_trombone_processor.js>');```
-    - __The path used in this example should be relative to the public directory!__
+  - Adding AudioWorklet modules is often tricky. If the above doesn't work, you may move ```pink_trombone_processor.js``` and ```noise.js``` into your public folder and use ```await <yourAudioContext>.audioWorklet.addModule('path/to/pink_trombone_processor.js>);``` instead. __The path should be relative to the public directory!__
+  - If the above doesn't work either, you may try ```import WorkletProcessor from "path/to/pink_trombone_processor.js?worklet&url``` and then ```await <audioCtx>.audioWorklet.addModule(WorkletProcessor)```
     
 ### RPT Voice(s)
 The ```RPT_Voice``` class manages a single modular Pink Trombone voice, with methods for changing audio parameters and manipulating speech.
 
 #### Initialization
 - Create a ```new RPT_Voice(<name/number>, <yourAudioContext>, <audioDestination?>)```, or several. You may want to store it in a component state.
-  - ```audioDestination``` is an optional ```AudioNode``` which the voice AudioWorklet will route its audio output into. It will default to the AudioContext destination.
+  - ```audioDestination``` is an optional ```AudioNode``` which the voice AudioWorklet will route its audio output to. It will default to the AudioContext destination.
   - Once a voice is created, enable audio processing with ```<voice>.connect()``` whe needed. When a voice is no longer needed, call ```<voice>.disconnect()``` to free up resources.
  
 #### Glottis AudioParams
-The Glottis module produces a raw "glottal source" - the sound produced by the vocal cords before being filtered by the vocal tract. Access Glottis parameters of a voice using ```<voice>.glottis.parameters.get(<param>)``` and use any AudioParam methods such as ```setTargetAtTime```, or write values to ```<param>.value``` directly.
+The Glottis module produces a raw "glottal source" - the sound produced by the vocal cords before being filtered by the vocal tract. Access Glottis parameters of a voice using ```<voice>.glottis.parameters.get(<param>)``` and use any AudioParam methods such as ```setTargetAtTime```, or write values to ```<AudioParam>.value``` directly.
 - Timbral AudioParams - general timbral properties of the voice not used for speech generation:
   - ```frequency``` (in Hz) - the fundamental frequency of the voice
   - ```tenseness``` (float 0-1) - between 0, a breathy whisper; and 1, a harsh, strained tone. Default and "natural" voice is around 0.6.
@@ -35,7 +35,7 @@ The Glottis module produces a raw "glottal source" - the sound produced by the v
   - ```pitchbend``` (in semitones, not necessary for speech) - bends the fundamental frequency up/down the specified # of semitones.
 
 #### Tract AudioParams
-The Tract module filters the glottal source output by the Glottis using several parameters modeled after the human vocal tract. Access Tract parameters of a voice using ```<voice>.tract.parameters.get(<param>)``` and use any AudioParam methods, or write to ```<param>.value``` directly.
+The Tract module filters the glottal source output by the Glottis using several parameters modeled after the human vocal tract. Access Tract parameters of a voice using ```<voice>.tract.parameters.get(<param>)``` and use any AudioParam methods, or write to ```<AudioParam>.value``` directly.
 - Timbral AudioParams - general properties of the vocal tract, not used during speech generation:
   - ```n``` (int) - the length of the vocal tract, in segments. Default "male" length is 44. Shortening the tract will produce gradually "younger", more "feminine" voices.
     - If using a corresponding Tract UI component, use ```<voice>.setN(<n>)``` instead of writing the parameter value directly to update the UI visuals as well.
@@ -51,4 +51,4 @@ The Tract module filters the glottal source output by the Glottis using several 
 The ```<Tract>``` component renders a single interactive tract UI that looks and behaves almost identically to the one found in the original Pink Trombone.
 - Add a ```<Tract />``` component anywhere in your component tree. Props:
   - voice: the ```RPT_Voice``` object the tract UI should be linked to.
-  - canvasRef: a React ```useRef``` containing an HTML ```<canvas>``` element the UI graphics should render to. __Pass the entire ref, NOT ref.current!__
+  - canvasRef: a React Ref pointing to an HTML ```<canvas>``` element the UI graphics should render to. __Pass the entire ref, NOT ref.current!__
