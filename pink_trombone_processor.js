@@ -529,7 +529,7 @@ class TractProcessor extends AudioWorkletProcessor {
       else slowReturn = 0.6 + 0.4 * (i - this.noseStart) / (this.tipStart - this.noseStart);
       this.diameter[i] = moveTowards(diameter, targetDiameter, slowReturn * amount, 2 * amount);
     }
-    if (this.lastObstruction > -1 && newLastObstruction == -1 && this.noseA[0] < 0.05) {
+    if (this.lastObstruction > -1 && newLastObstruction == -1 && this.noseA[0] < 0.05 && this.fricative_strength) {
       this.addTransient(this.lastObstruction);
     }
     this.lastObstruction = newLastObstruction;

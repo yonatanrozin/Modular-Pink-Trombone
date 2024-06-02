@@ -4,12 +4,13 @@ export type RPT_Voice_Preset = {
     n: number,
     frequency: number,
     tenseness: number,
+    filters?: number[]
 }
 
 export default function Tract(props: {voice: RPT_Voice}) {
 
     const {voice} = props;
-
+    
     const cnvRef = useRef<HTMLCanvasElement>(null);
 
     const animationRef = useRef(0);
@@ -44,6 +45,12 @@ export default function Tract(props: {voice: RPT_Voice}) {
         onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
 }
 
+export const fFreqs = [
+    50, 63, 80, 100, 125, 160, 200, 250, 315, 
+    400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
+    3200, 4000
+]
+
 export class RPT_Voice {
     
     name: string | number;
@@ -57,9 +64,10 @@ export class RPT_Voice {
     aspiration: BiquadFilterNode;
     fricative: BiquadFilterNode;
 
+    filters: BiquadFilterNode[];
+
     d?: Float64Array;
     v: number = 0.4;
-    tongue = {i: 12.9, d: 2.43};
 
     UI: TractUI;
 
@@ -110,6 +118,12 @@ export class RPT_Voice {
         this.fricative.frequency.value = 1000;
         this.fricative.Q.value = 0.5;
 
+        this.filters = new Array(20).fill(undefined).map(() => new BiquadFilterNode(this.ctx));
+        this.filters.forEach((f, i) => {
+            f.frequency.value = fFreqs[i];
+            f.Q.value = 4.31;
+        });
+
         this.UI = new TractUI(this);
     }
 
@@ -117,10 +131,15 @@ export class RPT_Voice {
         this.noiseNode.connect(this.aspiration);
         this.noiseNode.connect(this.fricative);
         this.aspiration.connect(this.glottis, 0, 0);
-        this.fricative.connect(this.tract, 0, 1);
-        this.glottis.connect(this.tract, 0, 0);
         this.glottis.connect(this.tract, 1, 2);
+        this.fricative.connect(this.tract, 0, 1);
         this.tract.connect(this.destination);
+
+        this.glottis.connect(this.filters[0]);
+        for (let i = 1; i < this.filters.length; i++) {
+            this.filters[i-1].connect(this.filters[i]);
+        }
+        this.filters.at(-1)!.connect(this.tract, 0, 0);
         
         console.log(`Voice ${this.name} connected.`);
     }
@@ -128,6 +147,7 @@ export class RPT_Voice {
     disconnect() {
         this.glottis.disconnect();
         this.tract.disconnect();
+        for (let f of this.filters) f.disconnect();
         console.log(`Voice ${this.name} disconnected.`);
     }
 
@@ -135,6 +155,13 @@ export class RPT_Voice {
         this.glottis.parameters.get("frequency")!.value = preset.frequency;
         this.glottis.parameters.get("tenseness")!.value = preset.tenseness;
         this.setN(preset.n);
+        this.filters.forEach(f => f.gain.value = 0); //reset all gain values
+        preset.filters?.forEach((f, i) => {
+            if (i == 0) this.filters[i].type = "lowshelf";
+            else if (i == preset.filters!.length - 1) this.filters[i].type = "highshelf";
+            else this.filters[i].type = "peaking";
+            this.filters[i].gain.value = f;
+        });
     }
 
     setN(n: number) {
@@ -656,7 +683,6 @@ export class TractUI {
             var out = fromPoint*0.5*(this.tongueUpperIndexBound-this.tongueLowerIndexBound);
             this.tongueIndex = constrain(index, this.tongueIndexCentre-out, this.tongueIndexCentre+out);
 
-            this.voice.tongue = {i: this.tongueIndex, d: this.tongueDiameter};
             this.voice.tract.parameters.get("tongue-index")!.value = this.tongueIndex;
             this.voice.tract.parameters.get("tongue-diameter")!.value = this.tongueDiameter;
         }
