@@ -45,11 +45,11 @@ export default function Tract(props: {voice: RPT_Voice}) {
         onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
 }
 
-export const fFreqs = [
-    50, 63, 80, 100, 125, 160, 200, 250, 315, 
-    400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
-    3200, 4000
-]
+// export const fFreqs = [
+//     50, 63, 80, 100, 125, 160, 200, 250, 315, 
+//     400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
+//     3200, 4000
+// ]
 
 export class RPT_Voice {
     
@@ -119,10 +119,7 @@ export class RPT_Voice {
         this.fricative.Q.value = 0.5;
 
         this.filters = new Array(20).fill(undefined).map(() => new BiquadFilterNode(this.ctx));
-        this.filters.forEach((f, i) => {
-            f.frequency.value = fFreqs[i];
-            f.Q.value = 4.31;
-        });
+        this.filters.forEach(f => f.Q.value = 4.31);
 
         this.UI = new TractUI(this);
     }
@@ -152,7 +149,7 @@ export class RPT_Voice {
     }
 
     setPreset(preset: RPT_Voice_Preset) {
-        this.glottis.parameters.get("frequency")!.value = preset.frequency;
+        this.setFrequency(preset.frequency);
         this.glottis.parameters.get("tenseness")!.value = preset.tenseness;
         this.setN(preset.n);
         this.filters.forEach(f => f.gain.value = 0); //reset all gain values
@@ -167,6 +164,13 @@ export class RPT_Voice {
     setN(n: number) {
         this.tract.parameters.get("n")!.value = n;
         this.UI.init(this.tract.parameters.get("n")!.value);
+    }
+
+    setFrequency(f: number) {
+        this.glottis.parameters.get("frequency")!.value = f;
+        for (let i = 0; i < this.filters.length; i++) {
+            this.filters[i].frequency.value = f * Math.pow(1.259921, i);
+        }
     }
 
     setDiameters(d: Float64Array, targetOnly = false) {
