@@ -4,7 +4,8 @@ export type RPT_Voice_Preset = {
     n: number,
     frequency: number,
     tenseness: number,
-    filters?: number[]
+    filters?: number[],
+    gain?: number
 }
 
 export default function Tract(props: {voice: RPT_Voice}) {
@@ -60,6 +61,7 @@ export class RPT_Voice {
 
     glottis: AudioWorkletNode;
     tract: AudioWorkletNode;
+    gain: GainNode;
     noiseNode: AudioBufferSourceNode;
     aspiration: BiquadFilterNode;
     fricative: BiquadFilterNode;
@@ -91,6 +93,8 @@ export class RPT_Voice {
             processorOptions: { name: this.name }
         });
 
+        this.gain = new GainNode(this.ctx, {gain: 1})
+
         this.tract.port.onmessage = (e) => {
             this.d = e.data.d; 
             this.v = e.data.v;
@@ -119,7 +123,12 @@ export class RPT_Voice {
         this.fricative.Q.value = 0.5;
 
         this.filters = new Array(20).fill(undefined).map(() => new BiquadFilterNode(this.ctx));
-        this.filters.forEach(f => f.Q.value = 4.31);
+        this.filters.forEach((f, i) => {
+            f.Q.value = 4.31
+            if (i == 0) this.filters[i].type = "lowshelf";
+            else if (i == this.filters!.length - 1) this.filters[i].type = "highshelf";
+            else this.filters[i].type = "peaking";
+        });
 
         this.UI = new TractUI(this);
     }
@@ -130,7 +139,8 @@ export class RPT_Voice {
         this.aspiration.connect(this.glottis, 0, 0);
         this.glottis.connect(this.tract, 1, 2);
         this.fricative.connect(this.tract, 0, 1);
-        this.tract.connect(this.destination);
+        this.tract.connect(this.gain);
+        this.gain.connect(this.destination);
 
         this.glottis.connect(this.filters[0]);
         for (let i = 1; i < this.filters.length; i++) {
@@ -144,21 +154,22 @@ export class RPT_Voice {
     disconnect() {
         this.glottis.disconnect();
         this.tract.disconnect();
+        this.gain.disconnect();
         for (let f of this.filters) f.disconnect();
         console.log(`Voice ${this.name} disconnected.`);
+    }
+
+    setGain(gain: number) {
+        this.gain.gain.value = gain;
     }
 
     setPreset(preset: RPT_Voice_Preset) {
         this.setFrequency(preset.frequency);
         this.glottis.parameters.get("tenseness")!.value = preset.tenseness;
         this.setN(preset.n);
-        this.filters.forEach(f => f.gain.value = 0); //reset all gain values
-        preset.filters?.forEach((f, i) => {
-            if (i == 0) this.filters[i].type = "lowshelf";
-            else if (i == preset.filters!.length - 1) this.filters[i].type = "highshelf";
-            else this.filters[i].type = "peaking";
-            this.filters[i].gain.value = f;
-        });
+        this.filters.forEach(f => f.gain.value = 0);
+        preset.filters?.forEach((f, i) => this.filters[i].gain.value = f);
+        preset.gain && this.setGain(preset.gain);
     }
 
     setN(n: number) {
