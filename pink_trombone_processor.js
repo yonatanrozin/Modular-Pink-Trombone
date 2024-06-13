@@ -269,7 +269,6 @@ class GlottisProcessor extends AudioWorkletProcessor {
     //update k-rate parameter values for the current block
     this.vibratoAmount = params["vibrato-amount"][0];
     this.vibratoFrequency = params["vibrato-frequency"][0];
-    this.intensity = params["intensity"][0];
     
     //some voices dont't have inputs defined immediately (why?)
     if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
@@ -288,6 +287,8 @@ class GlottisProcessor extends AudioWorkletProcessor {
         //get final tenseness by multiplying base tenseness with multiplier for this sample
         this.UITenseness = params["tenseness"][0] * tensenessMult;
         this.loudness = Math.pow(tensenessMult * this.UITenseness, 0.25); // loudness is a function of speech tenseness
+        
+        this.intensity = params["intensity"][j] || params["intensity"][0];
 
         //get final pitch by applying
         this.UIFrequency = params["frequency"][0] * 
