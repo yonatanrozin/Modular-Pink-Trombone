@@ -695,58 +695,59 @@ class TractProcessor extends AudioWorkletProcessor {
       let index = this.constrictionIndex;
       let dia = this.constrictionDiameter;
 
-      if (!index) return;
+      if (index && (dia > -1.6)) {
       
-      if (index > this.noseStart && dia < -0.8) this.velumTarget = 0.4;
-      if (dia < -0.85 - 0.8) return;
-      dia -= 0.3;
-      if (dia < 0) dia = 0;     
-      
-      let width = map(index, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
+        if (index > this.noseStart && dia < -0.8) this.velumTarget = 0.4;
+        dia -= 0.3;
+        if (dia < 0) dia = 0;     
+        
+        let width = map(index, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
 
-      if (index >= 2 && index < this.n && dia < 3) {
+        if (index >= 2 && index < this.n && dia < 3) {
 
-        let intIndex = Math.round(index);
-        for (let i=-Math.ceil(width)-1; i<width+1; i++) {   
-          if (intIndex+i<0 || intIndex+i >= this.n) continue;
-          let relpos = (intIndex+i) - index;
-          relpos = Math.abs(relpos)-0.5;
-          let shrink;
-          if (relpos <= 0) shrink = 0;
-          else if (relpos > width) shrink = 1;
-          else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / width)); //0.5 * ...
-          if (dia < this.targetDiameter[intIndex+i]) {
-            this.targetDiameter[intIndex+i] = dia + (this.targetDiameter[intIndex+i]-dia)*shrink;
+          let intIndex = Math.round(index);
+          for (let i=-Math.ceil(width)-1; i<width+1; i++) {   
+            if (intIndex+i<0 || intIndex+i >= this.n) continue;
+            let relpos = (intIndex+i) - index;
+            relpos = Math.abs(relpos)-0.5;
+            let shrink;
+            if (relpos <= 0) shrink = 0;
+            else if (relpos > width) shrink = 1;
+            else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / width)); //0.5 * ...
+            if (dia < this.targetDiameter[intIndex+i]) {
+              this.targetDiameter[intIndex+i] = dia + (this.targetDiameter[intIndex+i]-dia)*shrink;
+            }
           }
         }
+
       }
 
       //inscribe tongue constriction
       let index2 = this.constriction2Index;
       let dia2 = this.constriction2Diameter;
 
-      if (!index2) return;
+      if (index2 && (dia2 > -1.6)) {
       
-      if (index2 > this.noseStart && dia2 < -0.8) this.velumTarget = 0.4;
-      if (dia2 < -0.85 - 0.8) return;
-      dia2 -= 0.3;
-      if (dia2 < 0) dia2 = 0;     
-      
-      let width2 = map(index2, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
+        if (index2 > this.noseStart && dia2 < -0.8) this.velumTarget = 0.4;
+        dia2 -= 0.3;
+        if (dia2 < 0) dia2 = 0;     
+        
+        let width2 = map(index2, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
 
-      if (index2 >= 2 && index2 < this.n && dia2 < 3) {
+        if (index2 >= 2 && index2 < this.n && dia2 < 3) {
 
-        let intIndex = Math.round(index2);
-        for (let i=-Math.ceil(width2)-1; i<width2+1; i++) {   
-          if (intIndex+i<0 || intIndex+i >= this.n) continue;
-          let relpos = (intIndex+i) - index2;
-          relpos = Math.abs(relpos)-0.5;
-          let shrink;
-          if (relpos <= 0) shrink = 0;
-          else if (relpos > width2) shrink = 1;
-          else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / width2));
-          if (dia2 < this.targetDiameter[intIndex+i]) {
-            this.targetDiameter[intIndex+i] = dia2 + (this.targetDiameter[intIndex+i]-dia2)*shrink;
+          let intIndex = Math.round(index2);
+          for (let i=-Math.ceil(width2)-1; i<width2+1; i++) {   
+            if (intIndex+i<0 || intIndex+i >= this.n) continue;
+            let relpos = (intIndex+i) - index2;
+            relpos = Math.abs(relpos)-0.5;
+            let shrink;
+            if (relpos <= 0) shrink = 0;
+            else if (relpos > width2) shrink = 1;
+            else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / width2));
+            if (dia2 < this.targetDiameter[intIndex+i]) {
+              this.targetDiameter[intIndex+i] = dia2 + (this.targetDiameter[intIndex+i]-dia2)*shrink;
+            }
           }
         }
       }
