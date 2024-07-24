@@ -302,21 +302,15 @@ var p = [
   180
 ];
 
-// To remove the need for index wrapping, double the permutation table length
-var perm = new Array(512);
-var gradP = new Array(512);
-
 // Skewing and unskewing factors for 2, 3, and 4 dimensions
 var F2 = 0.5 * (Math.sqrt(3) - 1);
 var G2 = (3 - Math.sqrt(3)) / 6;
 
-var F3 = 1 / 3;
-var G3 = 1 / 6;
-
 export default class Noise {
-  constructor() {
+  constructor(seed = Math.random()) {
     this.perm = new Array(512);
     this.gradP = new Array(512);
+    this.seed(seed);
   }
 
   seed(seed) {
