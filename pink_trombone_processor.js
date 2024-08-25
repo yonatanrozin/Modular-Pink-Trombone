@@ -441,10 +441,9 @@ class TractProcessor extends AudioWorkletProcessor {
 
   constructor(options) {
     super();
-
     this.i = options.processorOptions.i;
-
     this.init();
+    this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});
   }
 
   init(n = 44) {
@@ -457,7 +456,7 @@ class TractProcessor extends AudioWorkletProcessor {
     this.diameter = new Float64Array(this.n);
     this.targetDiameter = new Float64Array(this.n);
 
-    this.getTargetDiameters();
+    this.setTargetDiameters();
     for (let i = 0; i < this.targetDiameter.length; i++) this.diameter[i] = this.targetDiameter[i]
 
     // for (let i = 0; i < this.n; i++) {
@@ -669,7 +668,7 @@ class TractProcessor extends AudioWorkletProcessor {
     this.calculateReflections();
   }
 
-  getTargetDiameters() {
+  setTargetDiameters() {
 
     try {
 
@@ -804,22 +803,14 @@ class TractProcessor extends AudioWorkletProcessor {
 
       this.lipDiameter = params["lip-diameter"][0];
 
-      this.getTargetDiameters();
+      this.setTargetDiameters();
 
       this.movementSpeed = params["movement-speed"][0];
       this.fricative_strength = params["fricative-strength"][0];
 
-      var outArrayL = outputs[0][0];
-      var outArrayR = outputs[0][1];
+      var outArray = outputs[0][0];
       
-      // var panMultR = (1 + params["pan"][0]) / 2;
-      // var panMultL = 1 - panMultR;
-      
-      // var panMax = Math.max(panMultL, panMultR);
-      // panMultR /= panMax;
-      // panMultL /= panMax;
-      
-      for (let j = 0, N = outArrayL.length; j < N; j++) {
+      for (let j = 0, N = outArray.length; j < N; j++) {
         
         let lambda1 = j / N;
         let lambda2 = (j + 0.5) / N;
@@ -834,10 +825,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
         let samp = vocalOutput * 0.125;
         
-        outArrayL[j] = samp 
-          // * panMultL;
-        outArrayR[j] = samp 
-          // * panMultR;
+        outArray[j] = samp 
       }
       
       this.finishBlock();

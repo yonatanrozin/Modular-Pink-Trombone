@@ -4,16 +4,16 @@ export type RPT_Voice_Preset = {
     n: number,
     frequency: number,
     tenseness: number,
-    filters?: number[],
-    gain?: number
+    eq?: number[],
+    gain?: number,
+    pan?: number
 }
 
-export default function Tract(props: {voice: RPT_Voice}) {
+export default function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties}) {
 
-    const {voice} = props;
+    const {voice, style} = props;
     
     const cnvRef = useRef<HTMLCanvasElement>(null);
-
     const animationRef = useRef(0);
 
     //on component mount, pass 2D render context to voice UI
@@ -43,7 +43,7 @@ export default function Tract(props: {voice: RPT_Voice}) {
     }
 
     return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
-        onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
+        style={{...style, alignSelf: "center"}} onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
 }
 
 // export const fFreqs = [
@@ -61,7 +61,8 @@ export class RPT_Voice {
 
     glottis: AudioWorkletNode;
     tract: AudioWorkletNode;
-    gain: GainNode;
+    gainNode: GainNode;
+    pannerNode: StereoPannerNode;
     noiseNode: AudioBufferSourceNode;
     aspiration: BiquadFilterNode;
     fricative: BiquadFilterNode;
@@ -69,7 +70,7 @@ export class RPT_Voice {
     filters: BiquadFilterNode[];
 
     d?: Float64Array;
-    v: number = 0.4;
+    v: number = 0.01;
 
     UI: TractUI;
 
@@ -89,11 +90,12 @@ export class RPT_Voice {
         this.tract = new AudioWorkletNode(this.ctx, "tract", {
             numberOfInputs: 3, //glottal source, fricative noise, noise modulator
             numberOfOutputs: 1,
-            outputChannelCount: [2],
+            outputChannelCount: [1],
             processorOptions: { name: this.name }
         });
 
-        this.gain = new GainNode(this.ctx, {gain: 1})
+        this.gainNode = new GainNode(this.ctx, {gain: 1});
+        this.pannerNode = new StereoPannerNode(this.ctx, {pan: 0});
 
         this.tract.port.onmessage = (e) => {
             this.d = e.data.d; 
@@ -135,18 +137,21 @@ export class RPT_Voice {
 
     connect() {
         this.noiseNode.connect(this.aspiration);
-        this.noiseNode.connect(this.fricative);
         this.aspiration.connect(this.glottis, 0, 0);
         this.glottis.connect(this.tract, 1, 2);
+
+        this.noiseNode.connect(this.fricative);
         this.fricative.connect(this.tract, 0, 1);
-        this.tract.connect(this.gain);
-        this.gain.connect(this.destination);
+
+        this.tract.connect(this.gainNode);
+        this.gainNode.connect(this.pannerNode);
+        this.pannerNode.connect(this.destination);
 
         this.glottis.connect(this.filters[0]);
         for (let i = 1; i < this.filters.length; i++) {
             this.filters[i-1].connect(this.filters[i]);
         }
-        this.filters.at(-1)!.connect(this.tract, 0, 0);
+        this.filters[this.filters.length - 1].connect(this.tract, 0, 0);
         
         console.log(`Voice ${this.name} connected.`);
     }
@@ -154,13 +159,18 @@ export class RPT_Voice {
     disconnect() {
         this.glottis.disconnect();
         this.tract.disconnect();
-        this.gain.disconnect();
-        for (let f of this.filters) f.disconnect();
+        this.noiseNode.disconnect();
+        // this.gainNode.disconnect();
+        // for (let f of this.filters) f.disconnect();
         console.log(`Voice ${this.name} disconnected.`);
     }
 
     setGain(gain: number) {
-        this.gain.gain.value = gain;
+        this.gainNode.gain.value = gain;
+    }
+
+    setPanning(pan: number) {
+        this.pannerNode.pan.value = pan;
     }
 
     setPreset(preset: RPT_Voice_Preset) {
@@ -168,8 +178,9 @@ export class RPT_Voice {
         this.glottis.parameters.get("tenseness")!.value = preset.tenseness;
         this.setN(preset.n);
         this.filters.forEach(f => f.gain.value = 0);
-        preset.filters?.forEach((f, i) => this.filters[i].gain.value = f);
-        preset.gain && this.setGain(preset.gain);
+        preset.eq?.forEach((f, i) => this.filters[i].gain.value = f);
+        this.setGain(preset.gain || 1);
+        this.setPanning(preset.pan || 0);
     }
 
     setN(n: number) {
@@ -640,21 +651,19 @@ export class TractUI {
     }
 
     startMouse(event: MouseEvent) {
+        const {width, height} = this.cnv!.getBoundingClientRect();
         let touch: Record<string, any> = {
             alive: true,
-            x: (event.pageX-this.cnv!.offsetLeft)/this.cnv!.getBoundingClientRect().width*600,
-            y: (event.pageY-this.cnv!.offsetTop)/this.cnv!.getBoundingClientRect().width*600
+            x : event.nativeEvent.offsetX/width *this.cnv!.width,
+            y : event.nativeEvent.offsetY/height*this.cnv!.height
         };
-
         touch.index = this.getIndex(touch.x, touch.y);
         touch.diameter = this.getDiameter(touch.x, touch.y);
-
         if (touch.index >= this.tongueLowerIndexBound-4 && touch.index<=this.tongueUpperIndexBound+4 
             && touch.diameter >= this.innerTongueControlRadius-0.5 && touch.diameter <= this.outerTongueControlRadius+0.5)
         {
             this.tongueTouch = touch;
         }
-
         this.mouseTouch = touch;
         this.touchesWithMouse.push(touch);   
         this.handleTouches();
@@ -670,10 +679,11 @@ export class TractUI {
 
     moveMouse(event: MouseEvent)
     {
+        const {width, height} = this.cnv!.getBoundingClientRect();
         let touch = this.mouseTouch;
         if (!touch.alive) return;
-        touch.x = (event.pageX-this.cnv!.offsetLeft)/this.cnv!.getBoundingClientRect().width*600;
-        touch.y = (event.pageY-this.cnv!.offsetTop)/this.cnv!.getBoundingClientRect().width*600;
+        touch.x = event.nativeEvent.offsetX/width *this.cnv!.width,
+        touch.y = event.nativeEvent.offsetY/height*this.cnv!.height
         touch.index = this.getIndex(touch.x, touch.y);
         touch.diameter = this.getDiameter(touch.x, touch.y); 
         this.handleTouches();

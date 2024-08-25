@@ -30,7 +30,7 @@ The Glottis module produces a raw "glottal source" - the sound produced by the v
   - ```vibrato-frequency``` (in Hz) - the frequency of a sine wave that modulates the voice frequency to create a vibrato effect.
   - ```vibrato-amount``` - the amplitude of the vibrato sine wave. Units unknown? A typical vibrato amount is around 0.025.
 - Speech AudioParams - manipulated over time to create speech:
-  - ```intensity``` (float 0-1) - the volume of the pitched component of the voice. Generally stays at 1, but should drop to 0 for unpitched consonants such as S or F.
+  - ```intensity``` (float 0-1) - the volume of the pitched component of the voice. Generally stays at 1, but should drop to 0 for unpitched consonants such as S or F. This isn't (exactly) gain!! Use ```<voice>.setGain``` to set the gain on the entire voice.
   - ```tenseness-mult``` (float 0-1) - a multiplier of the tenseness parameter, used to scale the final tenseness between 0 and the base tenseness value.
   - ```pitchbend``` (in semitones, not necessary for speech) - bends the fundamental frequency up/down the specified # of semitones.
 
@@ -46,6 +46,10 @@ The Tract module filters the glottal source output by the Glottis using several 
   - ```velum-target``` (float 0.01 - 0.4, in cm?) - the width of the velum, which connects the oral and nasal tracts. Generally stays closed but opens for nasal consonants such as N and M.
   - ```fricative-strength``` (float 0+) - the volume of fricatives, white noise produced by tight tongue constrictions for consonants such as S and V.
   - ```movement-speed``` (float 0+, not required for speech) - the speed with which the tract measurements smoothly approach their target values. Set to a negative number for instant or 0 to freeze.
+
+#### Gain + Pan
+  - Use ```<voice>.setGain(gain)``` to set the gain (volume) of the voice (0 for silent, 1 for default, 1+ to amplify)
+  - Use ```<voice>.setPanning(pan)``` to set the stereo panning of the voice (-1 for L -> 1 for R, 0 for center)
 
 ### Tract UI Component
 The ```<Tract>``` component renders a single interactive tract UI that looks and behaves almost identically to the one found in the original Pink Trombone.
