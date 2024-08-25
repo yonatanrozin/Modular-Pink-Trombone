@@ -44,7 +44,8 @@ The Tract module filters the glottal source output by the Glottis using several 
   - ```constriction-index``` + ```constriction-diameter``` - the index + diameter of the tongue constriction, relevant for producing most consonants. In the GUI, these are manipulated by clicking/dragging around the "oral cavity" area.
   - ```lip-diameter``` - the diameter of the opening of the lips, used for producing O and U vowels.
   - ```velum-target``` (float 0.01 - 0.4, in cm?) - the width of the velum, which connects the oral and nasal tracts. Generally stays closed but opens for nasal consonants such as N and M.
-  - ```fricative-strength``` (float 0+) - the volume of fricatives, white noise produced by tight tongue constrictions for consonants such as S and V.
+  - ```fricativess``` (float 0+) - the volume of fricatives, white noise produced by tight tongue constrictions for consonants such as S and V.
+  - ```transients``` (float 0-1) - the volume of transients, short clicks produced by the tongue when leaving the roof of the mouth
   - ```movement-speed``` (float 0+, not required for speech) - the speed with which the tract measurements smoothly approach their target values. Set to a negative number for instant or 0 to freeze.
 
 #### Gain + Pan

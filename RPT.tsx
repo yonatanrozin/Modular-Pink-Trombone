@@ -753,14 +753,10 @@ export class TractUI {
                 }
             }
         }
-        
-
         this.voice.tract.parameters.get('constriction-index')!.value = index || 0;
         this.voice.tract.parameters.get('constriction-diameter')!.value = diameter || 0;
-
-        this.voice.tract.parameters.get('fricative-strength')!.value = 1;
+        this.voice.tract.parameters.get('fricatives')!.value = 1;
     }
-    
 }
 
 function constrain(n: number, low: number, high: number): number {

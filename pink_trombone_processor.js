@@ -375,12 +375,18 @@ class TractProcessor extends AudioWorkletProcessor {
       },
       //volume of fricative white noise produced by tight constrictions.
       {
-        name: "fricative-strength",
+        name: "fricatives",
         defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
       },
+      {
+        name: "transients",
+        defaultValue: 1,
+        minValue: 0,
+        automationRate: "k-rate"
+      },  
       //tongue index + diameter - simulated horizontal + vertical position of tongue in GUI
       {
         name: "tongue-index",
@@ -419,7 +425,7 @@ class TractProcessor extends AudioWorkletProcessor {
   fade = 1.0; //0.9999
   movementSpeed = 15; //cm per second
   transients = [];
-  transientStrength = 0.3;
+  transientStrength = 1;
   lipOutput = 0;
   noseOutput = 0;
   velumTarget = 0.01;
@@ -560,7 +566,7 @@ class TractProcessor extends AudioWorkletProcessor {
     trans.position = position;
     trans.timeAlive = 0;
     trans.lifeTime = 0.2;
-    trans.strength = this.transientStrength;
+    trans.strength = 0.3 * this.transientStrength;
     trans.exponent = 200; 
     this.transients.push(trans);
   }
@@ -806,7 +812,8 @@ class TractProcessor extends AudioWorkletProcessor {
       this.setTargetDiameters();
 
       this.movementSpeed = params["movement-speed"][0];
-      this.fricative_strength = params["fricative-strength"][0];
+      this.fricative_strength = params["fricatives"][0];
+      this.transientStrength = params["transients"][0];
 
       var outArray = outputs[0][0];
       
