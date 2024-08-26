@@ -152,7 +152,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.init();
-    this.i = options.processorOptions.i;
+    this.name = options.processorOptions.name;
   }
 
   init() {
@@ -447,7 +447,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
   constructor(options) {
     super();
-    this.i = options.processorOptions.i;
+    this.name = options.processorOptions.name;
     this.init();
     this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});
   }
@@ -787,14 +787,14 @@ class TractProcessor extends AudioWorkletProcessor {
     let glottalSignal = inputs[0][0];
     let fricativeNoise = inputs[1][0];
     let noiseModArray = inputs[2][0];
+
+    //handle undefined input array (for some reason)
+    if (!noiseModArray) return true;
     
     try {
 
       const newN = Math.floor(params['n'][0]);
-      if (newN != this.n) {
-        this.init(newN);
-        console.log(`Voice #${this.i} new N: ${this.n}`);
-      }
+      if (newN != this.n) this.init(newN);
       
       //update a bunch of object properties using audioparam values
       this.velumTarget = params["velum-target"][0];
@@ -841,7 +841,7 @@ class TractProcessor extends AudioWorkletProcessor {
       this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});
       
     } catch (e) {
-      console.error(`error from voice tract #${this.i}:`, e);
+      console.error(`error from voice tract #${this.name}:`, e);
       return false;
     }
     return true;
