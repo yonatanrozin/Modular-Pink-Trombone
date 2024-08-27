@@ -235,8 +235,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
     //MODIFIED: multiply aspiration by 3 to match original volume (why do we have to do this?)
     let aspiration = this.intensity * (1 - Math.sqrt(this.UITenseness)) * this.getNoiseModulator() * noiseSource * 8;
     aspiration *= 0.2 + 0.02 * this.noise.simplex1(this.totalTime * 1.99);
-    out += aspiration;
-    return out;
+    return [out, aspiration];
   }
 
   getNoiseModulator() {
@@ -275,9 +274,10 @@ class GlottisProcessor extends AudioWorkletProcessor {
     
     try {
       let inputArray = inputs[0][0];
-      let outArray = outputs[0][0];
 
-      let noiseModArray = outputs[1][0];
+      let outArray = outputs[0][0];
+      let aspirationArray = outputs[1][0];
+      let noiseModArray = outputs[2][0];
       
       //code taken from AudioSystem.doScriptProcessor
       for (let j = 0, N = outArray.length; j < N; j++) {
@@ -290,15 +290,14 @@ class GlottisProcessor extends AudioWorkletProcessor {
         
         this.intensity = params["intensity"][j] || params["intensity"][0];
 
-        //get final pitch by applying
         this.UIFrequency = params["frequency"][0] * 
           Math.pow(2, (params['pitchbend'][j] || params['pitchbend'][0])/12);
 
         let lambda1 = j / N;
-        let samp = this.runStep(lambda1, inputArray[j]);
+        let [glottalSource, aspiration] = this.runStep(lambda1, inputArray[j]);
 
-        //apply panning multiplers to L and R channels
-        outArray[j] = samp;
+        outArray[j] = glottalSource;
+        aspirationArray[j] = aspiration;
         noiseModArray[j] = this.getNoiseModulator();
       }
       this.finishBlock();
@@ -781,15 +780,17 @@ class TractProcessor extends AudioWorkletProcessor {
         
   process(inputs, outputs, params) {
 
-    //some voices dont't have inputs defined immediately (why?)
-    if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
+    //inputs: glottal source, aspiration, fricative noise source, noiseModulator
 
     let glottalSignal = inputs[0][0];
-    let fricativeNoise = inputs[1][0];
-    let noiseModArray = inputs[2][0];
+    let aspiration = inputs[1][0];
+    let fricativeNoise = inputs[2][0];
+    let noiseModulator = inputs[3][0];
+
+    let outArray = outputs[0][0];
 
     //handle undefined input array (for some reason)
-    if (!noiseModArray) return true;
+    if ([glottalSignal, aspiration, fricativeNoise, noiseModulator].includes(undefined)) return true;
     
     try {
 
@@ -814,25 +815,23 @@ class TractProcessor extends AudioWorkletProcessor {
       this.movementSpeed = params["movement-speed"][0];
       this.fricative_strength = params["fricatives"][0];
       this.transientStrength = params["transients"][0];
-
-      var outArray = outputs[0][0];
       
       for (let j = 0, N = outArray.length; j < N; j++) {
         
         let lambda1 = j / N;
         let lambda2 = (j + 0.5) / N;
-        let glottalOutput = glottalSignal[j]
+        let glottalOutput = aspiration[j] + glottalSignal[j];
         
         let vocalOutput = 0;
-        this.runStep(glottalOutput, fricativeNoise[j], lambda1, noiseModArray[j]);
+        this.runStep(glottalOutput, fricativeNoise[j], lambda1, noiseModulator[j]);
         vocalOutput += this.lipOutput + this.noseOutput;
         
-        this.runStep(glottalOutput, fricativeNoise[j], lambda2, noiseModArray[j]);
+        this.runStep(glottalOutput, fricativeNoise[j], lambda2, noiseModulator[j]);
         vocalOutput += this.lipOutput + this.noseOutput;
 
         let samp = vocalOutput * 0.125;
         
-        outArray[j] = samp 
+        outArray[j] = samp;
       }
       
       this.finishBlock();

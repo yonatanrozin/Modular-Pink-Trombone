@@ -82,13 +82,13 @@ export class RPT_Voice {
 
         this.glottis = new AudioWorkletNode(this.ctx, 'glottis', {
             numberOfInputs: 1, //aspiration noise
-            numberOfOutputs: 2, //glottal source, noise modulator
-            outputChannelCount: [1, 1], 
+            numberOfOutputs: 3, //glottal source, aspiration, noise modulator
+            outputChannelCount: [1, 1, 1], 
             processorOptions: { name: this.name }
         });
 
         this.tract = new AudioWorkletNode(this.ctx, "tract", {
-            numberOfInputs: 3, //glottal source, fricative noise, noise modulator
+            numberOfInputs: 4, //glottal source, aspiration, fricative noise, noise modulator
             numberOfOutputs: 1,
             outputChannelCount: [1],
             processorOptions: { name: this.name }
@@ -135,23 +135,40 @@ export class RPT_Voice {
         this.UI = new TractUI(this);
     }
 
+    /*
+    RPT Voice DSP chain:
+        Glottis 
+            Inputs: Aspiration noise source
+            Outputs
+                glottal source -> EQ filters -> tract glottal source
+                aspiration -> tract aspiration
+                noise modulator -> tract noise modulator
+        Tract 
+            Inputs: glottal source, aspiration, fricative noise source, noiseModulator
+            Outputs
+                filtered voice -> gain -> pan -> destination        
+    */
     connect() {
+        //connect noise source to aspiration + fricative filters
         this.noiseNode.connect(this.aspiration);
-        this.aspiration.connect(this.glottis, 0, 0);
-        this.glottis.connect(this.tract, 1, 2);
-
         this.noiseNode.connect(this.fricative);
-        this.fricative.connect(this.tract, 0, 1);
+        
+        this.aspiration.connect(this.glottis, 0, 0);    //aspiration noise source -> glottis aspiration
+        
+        this.glottis.connect(this.filters[0], 0, 0);    //glottis glottal source -> EQ filters    
+        for (let i = 1; i < this.filters.length; i++) { //daisy-chain EQ filters
+            this.filters[i-1].connect(this.filters[i]);
+        }
+        this.filters[this.filters.length - 1]           
+            .connect(this.tract, 0, 0);                 //EQ filters -> tract glottal source 
 
+        this.glottis.connect(this.tract, 1, 1);         //glottis aspiration -> tract aspiration
+        this.fricative.connect(this.tract, 0, 2);       //fricative noise source -> tract fricative
+        this.glottis.connect(this.tract, 2, 3);         //glottis noiseModulator -> tract noiseModulator
+        
         this.tract.connect(this.gainNode);
         this.gainNode.connect(this.pannerNode);
         this.pannerNode.connect(this.destination);
-
-        this.glottis.connect(this.filters[0]);
-        for (let i = 1; i < this.filters.length; i++) {
-            this.filters[i-1].connect(this.filters[i]);
-        }
-        this.filters[this.filters.length - 1].connect(this.tract, 0, 0);
         
         console.log(`Voice ${this.name} connected.`);
     }
