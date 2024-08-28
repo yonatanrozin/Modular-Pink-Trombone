@@ -345,21 +345,6 @@ class TractProcessor extends AudioWorkletProcessor {
         automationRate: "a-rate"
       },
 
-      //index/diameter of a second tongue constriction
-      {
-        name: "constriction2-index",
-        defaultValue: 0,
-        minValue: 0,
-        // maxValue: 44,
-        automationRate: "a-rate"
-      },
-      {
-        name: "constriction2-diameter",
-        defaultValue: 3,
-        maxValue: 3,
-        automationRate: "a-rate"
-      },
-
       {
         name: "lip-diameter",
         defaultValue: 1.5,
@@ -436,8 +421,6 @@ class TractProcessor extends AudioWorkletProcessor {
 
   constrictionIndex = 0;
   constrictionDiameter = 3;
-  constriction2Index = 0;
-  constriction2Diameter = 3;
 
   tongueIndex = 12.9;
   tongueDiameter = 2.43;
@@ -595,7 +578,6 @@ class TractProcessor extends AudioWorkletProcessor {
 
     let intensity = this.fricative_strength * 2;
     this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * intensity, this.constrictionIndex, this.constrictionDiameter, noiseModulator);
-    this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * intensity, this.constriction2Index, this.constriction2Diameter, noiseModulator);
   }
 
   addTurbulenceNoiseAtIndex(turbulenceNoise, index, diameter, noiseModulator) {   
@@ -726,36 +708,6 @@ class TractProcessor extends AudioWorkletProcessor {
 
       }
 
-      //inscribe tongue constriction
-      let index2 = this.constriction2Index;
-      let dia2 = this.constriction2Diameter;
-
-      if (index2 && (dia2 > -1.6)) {
-      
-        if (index2 > this.noseStart && dia2 < -0.8) this.velumTarget = 0.4;
-        dia2 -= 0.3;
-        if (dia2 < 0) dia2 = 0;     
-        
-        let width2 = map(index2, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
-
-        if (index2 >= 2 && index2 < this.n && dia2 < 3) {
-
-          let intIndex = Math.round(index2);
-          for (let i=-Math.ceil(width2)-1; i<width2+1; i++) {   
-            if (intIndex+i<0 || intIndex+i >= this.n) continue;
-            let relpos = (intIndex+i) - index2;
-            relpos = Math.abs(relpos)-0.5;
-            let shrink;
-            if (relpos <= 0) shrink = 0;
-            else if (relpos > width2) shrink = 1;
-            else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / width2));
-            if (dia2 < this.targetDiameter[intIndex+i]) {
-              this.targetDiameter[intIndex+i] = dia2 + (this.targetDiameter[intIndex+i]-dia2)*shrink;
-            }
-          }
-        }
-      }
-
       //inscribe lip constriction
       let lIndex = this.n - 2;
       let lDia = this.lipDiameter;
@@ -802,8 +754,6 @@ class TractProcessor extends AudioWorkletProcessor {
 
       this.constrictionIndex = params["constriction-index"][0];
       this.constrictionDiameter = params["constriction-diameter"][0] + 0.3;
-      this.constriction2Index = params["constriction2-index"][0];
-      this.constriction2Diameter = params["constriction2-diameter"][0] + 0.3;
 
       this.tongueIndex = params["tongue-index"][0]
       this.tongueDiameter = params["tongue-diameter"][0];
