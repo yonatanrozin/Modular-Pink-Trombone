@@ -757,7 +757,6 @@ class TractProcessor extends AudioWorkletProcessor {
       this.velumTarget = params["velum-target"][0];
 
       this.constrictionIndex = params["constriction-index"][0] * this.n;
-      console.log(params["constriction-index"][0], this.n, this.constrictionIndex)
       this.constrictionDiameter = params["constriction-diameter"][0] + 0.3;
 
       this.tongueIndex = params["tongue-index"][0] * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
