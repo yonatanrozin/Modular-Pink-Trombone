@@ -725,7 +725,8 @@ export class TractUI {
             var out = fromPoint*0.5*(this.tongueUpperIndexBound-this.tongueLowerIndexBound);
             this.tongueIndex = constrain(index, this.tongueIndexCentre-out, this.tongueIndexCentre+out);
 
-            this.voice.tract.parameters.get("tongue-index")!.value = this.tongueIndex;
+            this.voice.tract.parameters.get("tongue-index")!.value = 
+                (this.tongueIndex - this.tongueLowerIndexBound)/(this.tongueUpperIndexBound - this.tongueLowerIndexBound);
             this.voice.tract.parameters.get("tongue-diameter")!.value = this.tongueDiameter;
         }
 
@@ -770,7 +771,7 @@ export class TractUI {
                 }
             }
         }
-        this.voice.tract.parameters.get('constriction-index')!.value = index || 0;
+        this.voice.tract.parameters.get('constriction-index')!.value = index ? index/this.n : 0;
         this.voice.tract.parameters.get('constriction-diameter')!.value = diameter || 0;
         this.voice.tract.parameters.get('fricatives')!.value = 1;
     }

@@ -79,7 +79,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
       //intensity: volume of voiced (pitched) aspect of the voice. Does not affect fricatives and transients.
       {
         name: "intensity",
-        defaultValue: 0,
+        defaultValue: 1,
         minValue: 0,
         maxValue: 1,
         automationRate: "a-rate"
@@ -310,6 +310,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
   }
 }
 
+//TODO: NORMALIZE TONGUE INDEX TOO (0-1)
 class TractProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
@@ -334,14 +335,14 @@ class TractProcessor extends AudioWorkletProcessor {
         name: "constriction-index",
         defaultValue: 0,
         minValue: 0,
-        // maxValue: 44,
+        maxValue: 1,
         automationRate: "a-rate"
       },
       //vertical location of constriction, used to simulate a mouse held on the UI
       {
         name: "constriction-diameter",
         defaultValue: 3,
-        maxValue: 3,
+        maxValue: 3.5,
         automationRate: "a-rate"
       },
 
@@ -376,7 +377,7 @@ class TractProcessor extends AudioWorkletProcessor {
         name: "tongue-index",
         defaultValue: 12.9,
         minValue: 0,
-        maxValue: 44,
+        maxValue: 1,
         automationRate: "k-rate" 
       },    
       {
@@ -439,7 +440,10 @@ class TractProcessor extends AudioWorkletProcessor {
     this.n = n;
     this.bladeStart = Math.floor(10 * this.n/44);
     this.tipStart = Math.floor(32 * this.n/44);
-    this.lipStart = Math.floor(39 *this.n/44);    
+    this.lipStart = Math.floor(39 *this.n/44);   
+    
+    this.tongueLowerIndexBound = this.bladeStart + 2; 
+    this.tongueUpperIndexBound = this.tipStart - 3;   
 
     this.diameter = new Float64Array(this.n);
     this.targetDiameter = new Float64Array(this.n);
@@ -752,10 +756,12 @@ class TractProcessor extends AudioWorkletProcessor {
       //update a bunch of object properties using audioparam values
       this.velumTarget = params["velum-target"][0];
 
-      this.constrictionIndex = params["constriction-index"][0];
+      this.constrictionIndex = params["constriction-index"][0] * this.n;
+      console.log(params["constriction-index"][0], this.n, this.constrictionIndex)
       this.constrictionDiameter = params["constriction-diameter"][0] + 0.3;
 
-      this.tongueIndex = params["tongue-index"][0]
+      this.tongueIndex = params["tongue-index"][0] * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
+        + this.tongueLowerIndexBound;
       this.tongueDiameter = params["tongue-diameter"][0];
 
       this.lipDiameter = params["lip-diameter"][0];
