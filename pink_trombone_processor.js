@@ -432,7 +432,8 @@ class TractProcessor extends AudioWorkletProcessor {
     super();
     this.name = options.processorOptions.name;
     this.init();
-    this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});
+    this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});    
+    this.port.addEventListener("message", msg => {this.diameter = msg.d, this.targetDiameter = msg.td});
   }
 
   init(n = 44) {

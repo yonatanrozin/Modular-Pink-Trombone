@@ -200,6 +200,17 @@ export class RPT_Voice {
         this.setPanning(preset.pan || 0);
     }
 
+    setTongueIndex(i: number) {
+        this.tract.parameters.get("tongue-index")!.value = i;
+        this.UI.tongueIndex = this.UI.tongueLowerIndexBound + i * 
+            (this.UI.tongueUpperIndexBound - this.UI.tongueLowerIndexBound)
+    }
+
+    setTongueDiameter(d: number) {
+        this.tract.parameters.get("tongue-diameter")!.value = d;
+        this.UI.tongueDiameter = d;
+    }
+
     setN(n: number) {
         this.tract.parameters.get("n")!.value = n;
         this.UI.init(this.tract.parameters.get("n")!.value);
