@@ -1,4 +1,4 @@
-import { useEffect, useRef, MouseEvent } from "react";
+import { useEffect, useRef, MouseEvent, Dispatch, SetStateAction } from "react";
 
 export type RPT_Voice_Preset = {
     n: number,
@@ -9,12 +9,21 @@ export type RPT_Voice_Preset = {
     pan?: number
 }
 
-export default function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties}) {
+export default function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
+    setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>
+}) {
 
-    const {voice, style} = props;
+    const {voice, style, setVowel} = props;
     
     const cnvRef = useRef<HTMLCanvasElement>(null);
     const animationRef = useRef(0);
+
+    function getUIVowel() {
+        setVowel?.({
+            i: voice.UI.normalizedTongueIndex(), 
+            d: voice.UI.tongueDiameter
+        });
+    }
 
     //on component mount, pass 2D render context to voice UI
     useEffect(() => {
@@ -27,6 +36,7 @@ export default function Tract(props: {voice: RPT_Voice, style?: React.CSSPropert
             animationRef.current = requestAnimationFrame(getNewFrame);
         }
         getNewFrame();
+        getUIVowel?.();
 
         return () => cancelAnimationFrame(animationRef.current);
     }, [voice, cnvRef.current]);
@@ -34,12 +44,14 @@ export default function Tract(props: {voice: RPT_Voice, style?: React.CSSPropert
     function startMouse(e: MouseEvent) {
         e.preventDefault();
         voice.UI.startMouse(e);
+        getUIVowel();
     }
     function endMouse() {
         voice.UI.endMouse();
     }
     function moveMouse(e: MouseEvent) {
         voice.UI.moveMouse(e);
+        if (e.buttons) getUIVowel();
     }
 
     return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
@@ -196,8 +208,7 @@ export class RPT_Voice {
 
     setTongueIndex(i: number) {
         this.tract.parameters.get("tongue-index")!.value = i;
-        this.UI.tongueIndex = this.UI.tongueLowerIndexBound + i * 
-            (this.UI.tongueUpperIndexBound - this.UI.tongueLowerIndexBound)
+        this.UI.tongueIndex = this.UI.tongueIndexFromNormalized(i);
     }
 
     setTongueDiameter(d: number) {
@@ -309,6 +320,16 @@ export class TractUI {
         this.tongueLowerIndexBound = this.bladeStart + 2; 
         this.tongueUpperIndexBound = this.tipStart - 3;   
         this.tongueIndexCentre = 0.5*(this.tongueLowerIndexBound+this.tongueUpperIndexBound);
+    }
+
+    tongueIndexFromNormalized(i: number) {
+        return this.tongueLowerIndexBound + i * 
+            (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
+    }
+
+    normalizedTongueIndex() {
+        return (this.tongueIndex - this.tongueLowerIndexBound) /
+            (this.tongueUpperIndexBound - this.tongueLowerIndexBound);
     }
 
     setRestDiameter() {
