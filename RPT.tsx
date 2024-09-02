@@ -190,7 +190,7 @@ export class RPT_Voice {
         this.setN(preset.n);
         this.filters.forEach(f => f.gain.value = 0);
         preset.eq?.forEach((f, i) => this.filters[i].gain.value = f);
-        this.setGain(preset.gain || 1);
+        if (preset.gain !== undefined) this.setGain(preset.gain);
         this.setPanning(preset.pan || 0);
     }
 
