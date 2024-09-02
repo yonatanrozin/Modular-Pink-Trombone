@@ -375,7 +375,7 @@ class TractProcessor extends AudioWorkletProcessor {
       //tongue index + diameter - simulated horizontal + vertical position of tongue in GUI
       {
         name: "tongue-index",
-        defaultValue: 12.9,
+        defaultValue: .5,
         minValue: 0,
         maxValue: 1,
         automationRate: "k-rate" 

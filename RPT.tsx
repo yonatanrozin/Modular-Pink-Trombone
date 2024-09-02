@@ -46,12 +46,6 @@ export default function Tract(props: {voice: RPT_Voice, style?: React.CSSPropert
         style={{...style, alignSelf: "center"}} onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
 }
 
-// export const fFreqs = [
-//     50, 63, 80, 100, 125, 160, 200, 250, 315, 
-//     400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
-//     3200, 4000
-// ]
-
 export class RPT_Voice {
     
     name: string | number;
@@ -223,26 +217,12 @@ export class RPT_Voice {
         }
     }
 
-    setDiameters(d: Float64Array, targetOnly = false) {
-
-        const tract_n = this.tract.parameters.get("n")!.value;
-
-        //resample inputted diameters to tract length
-        let resampled = d.length == tract_n ? d 
-            : new Float64Array(tract_n).map((v, i) => {
-                let i_scaled = i / (tract_n-1) * (d.length-1);
-                let interpVal = i_scaled % 1; 
-                if (interpVal == 0) return d[i_scaled];
-
-                let i1 = Math.floor(i_scaled);
-                let i2 = Math.floor(i_scaled) + 1;
-
-                v = d[i1]*(1-interpVal) + d[i2]*interpVal;
-                return v;
-            });
-        
-        this.tract.port.postMessage({td: resampled});
-        if (!targetOnly) this.tract.port.postMessage({d: resampled});
+    reset() {
+        [this.glottis, this.tract].forEach(node => 
+            node.parameters.forEach(param =>
+                param.value = param.defaultValue
+            )
+        );
     }
 }
 
