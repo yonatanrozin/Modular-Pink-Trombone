@@ -1,4 +1,4 @@
-import { useEffect, useRef, MouseEvent, Dispatch, SetStateAction } from "react";
+import { useEffect, useRef, MouseEvent, Dispatch, SetStateAction, useState } from "react";
 
 export type RPT_Voice_Preset = {
     n: number,
@@ -10,19 +10,24 @@ export type RPT_Voice_Preset = {
 }
 
 export default function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
-    setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>
+    setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>,
+    reportVowel?: boolean
 }) {
 
-    const {voice, style, setVowel} = props;
+    const {voice, style, setVowel, reportVowel} = props;
+
+    const [tractVowel, setTractVowel] = useState<{i: Number, d: number}>();
     
     const cnvRef = useRef<HTMLCanvasElement>(null);
     const animationRef = useRef(0);
 
     function getUIVowel() {
-        setVowel?.({
+        const vowel = {
             i: voice.UI.normalizedTongueIndex(), 
             d: voice.UI.tongueDiameter
-        });
+        }
+        setTractVowel(vowel);
+        setVowel?.(vowel);
     }
 
     //on component mount, pass 2D render context to voice UI
@@ -54,8 +59,12 @@ export default function Tract(props: {voice: RPT_Voice, style?: React.CSSPropert
         if (e.buttons) getUIVowel();
     }
 
+    const vowelInfo = tractVowel && `Index: ${tractVowel.i.toFixed(2)}, Diameter: ${tractVowel.d.toFixed(2)}`;
+
     return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
-        style={{...style, alignSelf: "center"}} onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}/>
+        style={{...style, alignSelf: "center"}} onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}
+        title={reportVowel ? vowelInfo : undefined}
+    />
 }
 
 export class RPT_Voice {

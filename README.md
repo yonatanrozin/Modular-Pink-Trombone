@@ -54,6 +54,6 @@ The Tract module filters the glottal source output by the Glottis using several 
 
 ### Tract UI Component
 The ```<Tract>``` component renders a single interactive tract UI that looks and behaves almost identically to the one found in the original Pink Trombone.
-- Add a ```<Tract />``` component anywhere in your component tree. Props:
-  - voice: the ```RPT_Voice``` object the tract UI should be linked to.
-  - canvasRef: a React Ref pointing to an HTML ```<canvas>``` element the UI graphics should render to. __Pass the entire ref, NOT ref.current!__
+- Add a ```<Tract voice={<voice>} <reportVowel?> />``` component anywhere in your component tree. Props:
+  - voice: the ```RPT_Voice``` object the tract UI should be linked to
+  - reportVowel (boolean - optional): report current tongue index + diameter on hover if true, or not if false/omitted
