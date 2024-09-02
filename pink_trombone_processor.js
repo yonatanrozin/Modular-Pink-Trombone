@@ -363,7 +363,6 @@ class TractProcessor extends AudioWorkletProcessor {
         name: "fricatives",
         defaultValue: 1,
         minValue: 0,
-        maxValue: 1,
         automationRate: "a-rate"
       },
       {
