@@ -531,14 +531,14 @@ class TractProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < this.n; i++) {
       let diameter = this.diameter[i];
       let targetDiameter = this.targetDiameter[i];
-      if (diameter <= 0) newLastObstruction = i;
+      if (diameter <= 0.05) newLastObstruction = i;
       let slowReturn; 
       if (i < this.noseStart) slowReturn = 0.6;
       else if (i >= this.tipStart) slowReturn = 1.0; 
       else slowReturn = 0.6 + 0.4 * (i - this.noseStart) / (this.tipStart - this.noseStart);
       this.diameter[i] = moveTowards(diameter, targetDiameter, slowReturn * amount, 2 * amount);
     }
-    if (this.lastObstruction > -1 && newLastObstruction == -1 && this.noseA[0] < 0.05 && this.fricative_strength) {
+    if (this.lastObstruction > -1 && newLastObstruction == -1 && this.noseA[0] < 0.05) { //&& this.fricativeStrength (???)
       this.addTransient(this.lastObstruction);
     }
     this.lastObstruction = newLastObstruction;
