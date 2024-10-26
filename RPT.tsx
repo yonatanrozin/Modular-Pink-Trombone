@@ -4,12 +4,13 @@ export type RPT_Voice_Preset = {
     n: number,
     frequency: number,
     tenseness: number,
-    eq?: number[],
+    aspiration?: number,
+    eq?: [number, number],
     gain?: number,
-    pan?: number
+    pan?: number,
 }
 
-export default function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
+export function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
     setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>,
     reportVowel?: boolean
 }) {
@@ -139,13 +140,12 @@ export class RPT_Voice {
         this.fricative.frequency.value = 1000;
         this.fricative.Q.value = 0.5;
 
-        this.filters = new Array(20).fill(undefined).map(() => new BiquadFilterNode(this.ctx));
-        this.filters.forEach((f, i) => {
-            f.Q.value = 4.31
-            if (i == 0) this.filters[i].type = "lowshelf";
-            else if (i == this.filters!.length - 1) this.filters[i].type = "highshelf";
-            else this.filters[i].type = "peaking";
-        });
+        const filterCount = 2;
+        this.filters = new Array(filterCount).fill(undefined).map((_, i) => new BiquadFilterNode(this.ctx, 
+            {Q: .431516, type: /*i == 0 ? "lowshelf" : */ i == filterCount - 1 ? "highshelf" : "peaking",
+                frequency: [100, 3900][i]
+            }
+        ));
 
         this.UI = new TractUI(this);
     }
@@ -192,8 +192,6 @@ export class RPT_Voice {
         this.glottis.disconnect();
         this.tract.disconnect();
         this.noiseNode.disconnect();
-        // this.gainNode.disconnect();
-        // for (let f of this.filters) f.disconnect();
         console.log(`Voice ${this.name} disconnected.`);
     }
 
@@ -212,6 +210,8 @@ export class RPT_Voice {
         this.filters.forEach(f => f.gain.value = 0);
         preset.eq?.forEach((f, i) => this.filters[i].gain.value = f);
         if (preset.gain !== undefined) this.setGain(preset.gain);
+        if (preset.aspiration != undefined) 
+            this.glottis.parameters.get("aspiration")!.value = preset.aspiration;
         this.setPanning(preset.pan || 0);
     }
 

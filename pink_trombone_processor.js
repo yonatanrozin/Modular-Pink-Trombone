@@ -1,56 +1,50 @@
 /*
-    Modular Pink Trombone
-    By Yonatan Rozin
+  Modular Pink Trombone
+  By Yonatan Rozin
+  Based on Pink Trombone by Neil Thapen. (see "Pink Trombone.html")
 
-    A modular version of Pink Trombone that allows for faster audio processing
-    and multiple simultaneous voices.
+  A modular version of Pink Trombone that allows for faster audio processing
+  and multiple simultaneous voices.
 
-    Modifications from original:
-    -   Deprecated ScriptProcessorNode has been replaced with new AudioWorkletNode
-            - This allows the audio processing to run in a separate thread from
-            the main script, making it MUCH faster and non-blocking
-    -   Pink Trombone objects (Tract, Glottis) integrated as AudioWorkletProcessor
-        class objects, allowing for multiple simultaneous Pink Trombone voices
-            - The original noise module has been made into a class, allowing for
-            each voice to have its own noise modules, with a unique noise seed.
-            This allows noisy signals (ex. vibrato) to be different per voice
-            This de-syncing can be reversed by setting the noise seeds to the same
-            number (this.noise.seed(0)) in VocalWorkletProcessor constructor
-    -   UI has been removed, it may possibly be re-integrated later.
-    -   Tract.addTurbulenceNoise() has been modified (since UI has been removed)
-        to allow fricatives to still be produced:
-            - Instead of relying on UI touches, addTurbulence noise simulates "touch"
-            using the value and location of the smallest current diameter, aka the
-            point of highest constriction in the vocal tract. These values are updated
-            constantly in Tract.reshapeTract(). A new fIntensity
-            variable has been added to the Tract object that determines the volume
-            of fricative noise. This allows letters that differ only by fricative
-            volume (for example, T and N) to remain distinguishable from one another
+  Modifications from original:
+  - Deprecated ScriptProcessorNode has been replaced with new AudioWorkletNode
+    - This allows the audio processing to run in a separate thread from
+      the main script, making it MUCH faster and non-blocking
+  - Pink Trombone objects (Tract, Glottis) integrated as AudioWorkletProcessor
+    class objects, allowing for multiple simultaneous Pink Trombone voices
+  - The original noise module has been made into a class, allowing for
+    each voice to have its own noise modules, with a unique noise seed.
+    This allows noisy signals (ex. vibrato) to be different per voice
+    This de-syncing can be reversed by setting the noise seeds to the same
+    number (this.noise.seed(0)) in VocalWorkletProcessor constructor
+  - Parameterization of UI controls - tongue index/diameter, constriction index/diameter, velum target
+    - tongue i/d replaces "tongue control" UI area
+    - constriction index/diameter simulates mouse click inside oral cavity
 
-    Built using Pink Trombone
-    version 1.1, March 2017
-    by Neil Thapen
-    venuspatrol.nfshost.com
+  Built using Pink Trombone
+  version 1.1, March 2017
+  by Neil Thapen
+  venuspatrol.nfshost.com
 
-    Copyright 2017 Neil Thapen
+  Copyright 2017 Neil Thapen
 
-    Permission is hereby granted, free of charge, to any person obtaining a
-    copy of this software and associated documentation files (the "Software"),
-    to deal in the Software without restriction, including without limitation
-    the rights to use, copy, modify, merge, publish, distribute, sublicense,
-    and / or sell copies of the Software, and to permit persons to whom the
-    Software is furnished to do so, subject to the following conditions:
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the "Software"),
+  to deal in the Software without restriction, including without limitation
+  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  and / or sell copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following conditions:
 
-    The above copyright notice and this permission notice shall be included in
-    all copies or substantial portions of the Software.
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
 
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-    IN THE SOFTWARE.
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+  IN THE SOFTWARE.
 */
 import Noise from "./noise.js";
 
@@ -74,6 +68,15 @@ class GlottisProcessor extends AudioWorkletProcessor {
         defaultValue: 140,
         minValue: 20,
         maxValue: 2000,
+        automationRate: "k-rate"
+      },
+      //aspiration: volume of unpitched aspect of the glottal source.
+      //  This does NOT affect fricatives! See TractProcessor.parameters.fricatives for fricative volume
+      {
+        name: "aspiration",
+        defaultValue: 1,
+        minValue: 0,
+        maxValue: 1,
         automationRate: "k-rate"
       },
       //intensity: volume of voiced (pitched) aspect of the voice. Does not affect fricatives and transients.
@@ -135,9 +138,10 @@ class GlottisProcessor extends AudioWorkletProcessor {
   vibratoAmount = 0.005;
   vibratoFrequency = 6;
   intensity = 0;
-  loudness = 1;
-
+  aspiration = 1;
+  
   //these parameters are modified by internal methods of the object
+  loudness = 1;
   totalTime = 0;
   timeInWaveform = 0;
   waveformLength = 0;
@@ -233,7 +237,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
     }
     let out = this.normalizedLFWaveform(this.timeInWaveform/this.waveformLength);
     //MODIFIED: multiply aspiration by 3 to match original volume (why do we have to do this?)
-    let aspiration = this.intensity * (1 - Math.sqrt(this.UITenseness)) * this.getNoiseModulator() * noiseSource * 8;
+    let aspiration = this.intensity * (1 - Math.sqrt(this.UITenseness)) * this.getNoiseModulator() * noiseSource * this.aspiration * 8;
     aspiration *= 0.2 + 0.02 * this.noise.simplex1(this.totalTime * 1.99);
     return [out, aspiration];
   }
@@ -249,15 +253,16 @@ class GlottisProcessor extends AudioWorkletProcessor {
     vibrato += 0.02 * this.noise.simplex1(this.totalTime * 4.07);
     // vibrato += 0.04 * this.noise.simplex1(this.totalTime * 2.15);
 
-    if (this.UIFrequency > this.smoothFrequency) 
-      this.smoothFrequency = Math.min(this.smoothFrequency * 1.1, this.UIFrequency);
-    if (this.UIFrequency < this.smoothFrequency) 
-      this.smoothFrequency = Math.max(this.smoothFrequency / 1.1, this.UIFrequency);
+    this.smoothFrequency = this.UIFrequency;
+    // if (this.UIFrequency > this.smoothFrequency) 
+    //   this.smoothFrequency = Math.min(this.smoothFrequency * 1.1, this.UIFrequency);
+    // if (this.UIFrequency < this.smoothFrequency) 
+    //   this.smoothFrequency = Math.max(this.smoothFrequency / 1.1, this.UIFrequency);
     this.oldFrequency = this.newFrequency;
     this.newFrequency = this.smoothFrequency * (1+vibrato);
     this.oldTenseness = this.newTenseness;
     this.newTenseness = this.UITenseness
-      + 0.1 * this.noise.simplex1(this.totalTime * 0.46) + 0.05 * this.noise.simplex1(this.totalTime * 0.36);
+    //   + 0.1 * this.noise.simplex1(this.totalTime * 0.46) + 0.05 * this.noise.simplex1(this.totalTime * 0.36);
   }
 
   // based on code from pink trombone AudioContext.doScriptProcessor()
@@ -268,6 +273,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
     //update k-rate parameter values for the current block
     this.vibratoAmount = params["vibrato-amount"][0];
     this.vibratoFrequency = params["vibrato-frequency"][0];
+    this.aspiration = params["aspiration"][0];
     
     //some voices dont't have inputs defined immediately (why?)
     if (!inputs[0][0]) return true; //output nothing (silence) until they're ready
