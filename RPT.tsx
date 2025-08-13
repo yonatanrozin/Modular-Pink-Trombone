@@ -6,7 +6,7 @@ export type RPT_Voice_Preset = {
     tenseness: number,
     aspiration?: number,
     eq?: [number, number],
-    gain?: number,
+    gain: number,
     pan?: number,
 }
 
@@ -69,6 +69,13 @@ export function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
 }
 
 export class RPT_Voice {
+
+    static defaultPreset: RPT_Voice_Preset = {
+        "n": 44,
+        "frequency": 140, "tenseness": 0.7,
+        "eq": [0, 0],
+        gain: 1
+    }
     
     name: string | number;
     ctx: AudioContext;
@@ -91,7 +98,7 @@ export class RPT_Voice {
     UI: TractUI;
 
     //create a new voice using the given audiocontext and destinationNOde (default ctx destination)
-    constructor(name: string | number, ctx: AudioContext, destination: AudioNode = ctx.destination) {
+    constructor(name: string | number, preset: RPT_Voice_Preset | null, ctx: AudioContext, destination: AudioNode = ctx.destination) {
         this.name = name;
         this.ctx = ctx;
         this.destination = destination;
@@ -147,6 +154,7 @@ export class RPT_Voice {
             }
         ));
 
+        if (preset) this.setPreset(preset);
         this.UI = new TractUI(this);
     }
 
