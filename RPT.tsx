@@ -80,15 +80,14 @@ export class RPT_Voice {
     name: string | number;
     ctx: AudioContext;
     connected: boolean = false;
-    destination: AudioNode;
 
     glottis: AudioWorkletNode;
     tract: AudioWorkletNode;
     gainNode: GainNode;
     pannerNode: StereoPannerNode;
     noiseNode: AudioBufferSourceNode;
-    aspiration: BiquadFilterNode;
-    fricative: BiquadFilterNode;
+    aspirationNode: BiquadFilterNode;
+    fricativeNode: BiquadFilterNode;
 
     filters: BiquadFilterNode[];
 
@@ -98,10 +97,9 @@ export class RPT_Voice {
     UI: TractUI;
 
     //create a new voice using the given audiocontext and destinationNOde (default ctx destination)
-    constructor(name: string | number, preset: RPT_Voice_Preset | null, ctx: AudioContext, destination: AudioNode = ctx.destination) {
+    constructor(name: string | number, preset: RPT_Voice_Preset | null, ctx: AudioContext) {
         this.name = name;
         this.ctx = ctx;
-        this.destination = destination;
 
         this.glottis = new AudioWorkletNode(this.ctx, 'glottis', {
             numberOfInputs: 1, //aspiration noise
@@ -137,19 +135,19 @@ export class RPT_Voice {
         this.noiseNode.loop = true;
         this.noiseNode.start();
 
-        this.aspiration = this.ctx.createBiquadFilter();
-        this.aspiration.type = "bandpass";
-        this.aspiration.frequency.value = 500;
-        this.aspiration.Q.value = 0.5;
+        this.aspirationNode = this.ctx.createBiquadFilter();
+        this.aspirationNode.type = "bandpass";
+        this.aspirationNode.frequency.value = 500;
+        this.aspirationNode.Q.value = 0.5;
         
-        this.fricative = this.ctx.createBiquadFilter();
-        this.fricative.type = "bandpass";
-        this.fricative.frequency.value = 1000;
-        this.fricative.Q.value = 0.5;
+        this.fricativeNode = this.ctx.createBiquadFilter();
+        this.fricativeNode.type = "bandpass";
+        this.fricativeNode.frequency.value = 1000;
+        this.fricativeNode.Q.value = 0.5;
 
         const filterCount = 2;
         this.filters = new Array(filterCount).fill(undefined).map((_, i) => new BiquadFilterNode(this.ctx, 
-            {Q: .431516, type: /*i == 0 ? "lowshelf" : */ i == filterCount - 1 ? "highshelf" : "peaking",
+            {Q: .431516, type: i == 0 ? "lowshelf" : i == filterCount - 1 ? "highshelf" : "peaking",
                 frequency: [100, 3900][i]
             }
         ));
@@ -171,12 +169,14 @@ export class RPT_Voice {
             Outputs
                 filtered voice -> gain -> pan -> destination        
     */
-    connect() {
-        //connect noise source to aspiration + fricative filters
-        this.noiseNode.connect(this.aspiration);
-        this.noiseNode.connect(this.fricative);
+    connect(destination: AudioNode) {
+        this.disconnect();
         
-        this.aspiration.connect(this.glottis, 0, 0);    //aspiration noise source -> glottis aspiration
+        //connect noise source to aspiration + fricative filters
+        this.noiseNode.connect(this.aspirationNode);
+        this.noiseNode.connect(this.fricativeNode);
+        
+        this.aspirationNode.connect(this.glottis, 0, 0);    //aspiration noise source -> glottis aspiration
         
         this.glottis.connect(this.filters[0], 0, 0);    //glottis glottal source -> EQ filters    
         for (let i = 1; i < this.filters.length; i++) { //daisy-chain EQ filters
@@ -186,21 +186,25 @@ export class RPT_Voice {
             .connect(this.tract, 0, 0);                 //EQ filters -> tract glottal source 
 
         this.glottis.connect(this.tract, 1, 1);         //glottis aspiration -> tract aspiration
-        this.fricative.connect(this.tract, 0, 2);       //fricative noise source -> tract fricative
+        this.fricativeNode.connect(this.tract, 0, 2);       //fricative noise source -> tract fricative
         this.glottis.connect(this.tract, 2, 3);         //glottis noiseModulator -> tract noiseModulator
         
         this.tract.connect(this.gainNode);
         this.gainNode.connect(this.pannerNode);
-        this.pannerNode.connect(this.destination);
-        
-        console.log(`Voice ${this.name} connected.`);
+        this.pannerNode.connect(destination);
+        this.connected = true;
     }
     
     disconnect() {
-        this.glottis.disconnect();
-        this.tract.disconnect();
+        this.connected = false;
         this.noiseNode.disconnect();
-        console.log(`Voice ${this.name} disconnected.`);
+        this.aspirationNode.disconnect();
+        this.fricativeNode.disconnect();
+        this.glottis.disconnect();
+        this.filters.forEach((f) => f.disconnect());
+        this.tract.disconnect();
+        this.gainNode.disconnect();
+        this.pannerNode.disconnect();
     }
 
     setGain(gain: number) {
