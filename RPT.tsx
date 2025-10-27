@@ -88,8 +88,23 @@ export class RPT_Voice {
     noiseNode: AudioBufferSourceNode;
     aspirationNode: BiquadFilterNode;
     fricativeNode: BiquadFilterNode;
+    eqFilterNodes: BiquadFilterNode[];
 
-    filters: BiquadFilterNode[];
+    tractN: AudioParam;
+    frequency: AudioParam;
+    aspirationIntensity: AudioParam;
+    pitchbend: AudioParam;
+    tractSpeed: AudioParam;
+
+    fricativeIntensity: AudioParam;
+    transientIntensity: AudioParam;
+    tenseness: {base: AudioParam,mult: AudioParam};
+    
+    intensity: AudioParam;
+    constriction: {index: AudioParam, diameter: AudioParam};
+    tongue: {index: AudioParam, diameter: AudioParam};
+    lipDiameter: AudioParam;
+    velumTarget: AudioParam;
 
     d?: Float64Array;
     v: number = 0.01;
@@ -114,6 +129,29 @@ export class RPT_Voice {
             outputChannelCount: [1],
             processorOptions: { name: this.name }
         });
+
+        this.tractN = this.tract.parameters.get("n")!;
+        this.frequency = this.glottis.parameters.get("frequency")!;
+        this.intensity = this.glottis.parameters.get("intensity")!;
+        this.aspirationIntensity = this.glottis.parameters.get("aspiration")!;
+        this.fricativeIntensity = this.tract.parameters.get("fricatives")!;
+        this.transientIntensity = this.tract.parameters.get("transients")!;
+        this.pitchbend = this.glottis.parameters.get("pitchbend")!;
+        this.tenseness = {
+            base: this.glottis.parameters.get("tenseness")!,
+            mult: this.glottis.parameters.get("tenseness-mult")!
+        }
+        this.tractSpeed = this.tract.parameters.get("movement-speed")!;
+        this.constriction = {
+            index: this.tract.parameters.get("constriction-index")!,
+            diameter: this.tract.parameters.get("constriction-diameter")!
+        }
+        this.tongue = {
+            index: this.tract.parameters.get("tongue-index")!,
+            diameter: this.tract.parameters.get("tongue-diameter")!
+        };
+        this.lipDiameter = this.tract.parameters.get("lip-diameter")!;
+        this.velumTarget = this.tract.parameters.get("velum-target")!;
 
         this.gainNode = new GainNode(this.ctx, {gain: 1});
         this.pannerNode = new StereoPannerNode(this.ctx, {pan: 0});
@@ -146,7 +184,7 @@ export class RPT_Voice {
         this.fricativeNode.Q.value = 0.5;
 
         const filterCount = 2;
-        this.filters = new Array(filterCount).fill(undefined).map((_, i) => new BiquadFilterNode(this.ctx, 
+        this.eqFilterNodes = new Array(filterCount).fill(undefined).map((_, i) => new BiquadFilterNode(this.ctx, 
             {Q: .431516, type: i == 0 ? "lowshelf" : i == filterCount - 1 ? "highshelf" : "peaking",
                 frequency: [100, 3900][i]
             }
@@ -161,7 +199,7 @@ export class RPT_Voice {
         Glottis 
             Inputs: Aspiration noise source
             Outputs
-                glottal source -> EQ filters -> tract glottal source
+                glottal source -> EQ eqFilterNodes -> tract glottal source
                 aspiration -> tract aspiration
                 noise modulator -> tract noise modulator
         Tract 
@@ -172,18 +210,18 @@ export class RPT_Voice {
     connect(destination: AudioNode) {
         this.disconnect();
         
-        //connect noise source to aspiration + fricative filters
+        //connect noise source to aspiration + fricative eqFilterNodes
         this.noiseNode.connect(this.aspirationNode);
         this.noiseNode.connect(this.fricativeNode);
         
         this.aspirationNode.connect(this.glottis, 0, 0);    //aspiration noise source -> glottis aspiration
         
-        this.glottis.connect(this.filters[0], 0, 0);    //glottis glottal source -> EQ filters    
-        for (let i = 1; i < this.filters.length; i++) { //daisy-chain EQ filters
-            this.filters[i-1].connect(this.filters[i]);
+        this.glottis.connect(this.eqFilterNodes[0], 0, 0);    //glottis glottal source -> EQ eqFilterNodes    
+        for (let i = 1; i < this.eqFilterNodes.length; i++) { //daisy-chain EQ eqFilterNodes
+            this.eqFilterNodes[i-1].connect(this.eqFilterNodes[i]);
         }
-        this.filters[this.filters.length - 1]           
-            .connect(this.tract, 0, 0);                 //EQ filters -> tract glottal source 
+        this.eqFilterNodes[this.eqFilterNodes.length - 1]           
+            .connect(this.tract, 0, 0);                 //EQ eqFilterNodes -> tract glottal source 
 
         this.glottis.connect(this.tract, 1, 1);         //glottis aspiration -> tract aspiration
         this.fricativeNode.connect(this.tract, 0, 2);       //fricative noise source -> tract fricative
@@ -201,7 +239,7 @@ export class RPT_Voice {
         this.aspirationNode.disconnect();
         this.fricativeNode.disconnect();
         this.glottis.disconnect();
-        this.filters.forEach((f) => f.disconnect());
+        this.eqFilterNodes.forEach((f) => f.disconnect());
         this.tract.disconnect();
         this.gainNode.disconnect();
         this.pannerNode.disconnect();
@@ -217,34 +255,34 @@ export class RPT_Voice {
 
     setPreset(preset: RPT_Voice_Preset) {
         this.setFrequency(preset.frequency);
-        this.glottis.parameters.get("tenseness")!.value = preset.tenseness;
+        this.tenseness.base.value = preset.tenseness;
         this.setN(preset.n);
-        this.filters.forEach(f => f.gain.value = 0);
-        preset.eq?.forEach((f, i) => this.filters[i].gain.value = f);
+        this.eqFilterNodes.forEach(f => f.gain.value = 0);
+        preset.eq?.forEach((f, i) => this.eqFilterNodes[i].gain.value = f);
         this.setGain(preset.gain ?? 1);
-        this.glottis.parameters.get("aspiration")!.value = preset.aspiration ?? 1;
+        this.aspirationIntensity.value = preset.aspiration ?? 1;
         this.setPanning(preset.pan || 0);
     }
 
     setTongueIndex(i: number) {
-        this.tract.parameters.get("tongue-index")!.value = i;
+        this.tongue.index.value = i;
         this.UI.tongueIndex = this.UI.tongueIndexFromNormalized(i);
     }
 
     setTongueDiameter(d: number) {
-        this.tract.parameters.get("tongue-diameter")!.value = d;
+        this.tongue.diameter.value = d;
         this.UI.tongueDiameter = d;
     }
 
     setN(n: number) {
-        this.tract.parameters.get("n")!.value = n;
-        this.UI.init(this.tract.parameters.get("n")!.value);
+        this.tractN.value = n;
+        this.UI.init(n);
     }
 
     setFrequency(f: number) {
-        this.glottis.parameters.get("frequency")!.value = f;
-        for (let i = 0; i < this.filters.length; i++) {
-            this.filters[i].frequency.value = f * Math.pow(1.259921, i);
+        this.frequency.value = f;
+        for (let i = 0; i < this.eqFilterNodes.length; i++) {
+            this.eqFilterNodes[i].frequency.value = f * Math.pow(1.259921, i);
         }
     }
 
@@ -757,15 +795,15 @@ export class TractUI {
             var out = fromPoint*0.5*(this.tongueUpperIndexBound-this.tongueLowerIndexBound);
             this.tongueIndex = constrain(index, this.tongueIndexCentre-out, this.tongueIndexCentre+out);
 
-            this.voice.tract.parameters.get("tongue-index")!.value = 
+            this.voice.tongue.index.value = 
                 (this.tongueIndex - this.tongueLowerIndexBound)/(this.tongueUpperIndexBound - this.tongueLowerIndexBound);
-            this.voice.tract.parameters.get("tongue-diameter")!.value = this.tongueDiameter;
+            this.voice.tongue.diameter.value = this.tongueDiameter;
         }
 
         if (!this.recording) this.setRestDiameter();   
 
         const targets = [...this.restDiameter]
-        this.voice.tract.parameters.get('velum-target')!.value = 0.01
+        this.voice.velumTarget.value = 0.01
 
         for (let j=0; j<this.touchesWithMouse.length; j++) {
             var touch = this.touchesWithMouse[j];
@@ -776,7 +814,7 @@ export class TractUI {
             diameter = this.getDiameter(x,y);
 
             if (index > this.noseStart && diameter < -this.noseOffset)     
-                this.voice.tract.parameters.get('velum-target')!.value = 0.4;      
+                this.voice.velumTarget.value = 0.4;      
             if (diameter < -0.85-this.noseOffset) continue;
             diameter -= 0.3;
             if (diameter<0) diameter = 0;       
@@ -803,9 +841,9 @@ export class TractUI {
                 }
             }
         }
-        this.voice.tract.parameters.get('constriction-index')!.value = index ? index/this.n : 0;
-        this.voice.tract.parameters.get('constriction-diameter')!.value = diameter || 0;
-        this.voice.tract.parameters.get('fricatives')!.value = 1;
+        this.voice.constriction.index.value = index ? index/this.n : 0;
+        this.voice.constriction.diameter!.value = diameter || 0;
+        this.voice.fricativeIntensity!.value = 1;
     }
 }
 
