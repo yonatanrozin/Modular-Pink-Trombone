@@ -316,10 +316,10 @@ class GlottisProcessor extends AudioWorkletProcessor {
   }
 }
 
-//TODO: NORMALIZE TONGUE INDEX TOO (0-1)
 class TractProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
+
       //tract length, in segments - horter tracts produce "younger", more "feminine" voices.
       {
         name: "n",
@@ -328,36 +328,63 @@ class TractProcessor extends AudioWorkletProcessor {
         maxValue: 60,
         automationRate: "k-rate"
       },
+
       //velum width, opens/closes the nasal tract, required for letters such as M and N
       {
         name: "velum-target",
         defaultValue: 0.01,
         minValue: 0,
         maxValue: 0.4,
-        automationRate: "a-rate"
+        automationRate: "k-rate"
       },
+      {
+        name: "use-constrictions",
+        defaultValue: 1,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: "k-rate"
+      },
+      //tongue index + diameter - simulated horizontal + vertical position of tongue in GUI
+      {
+        name: "tongue-index",
+        defaultValue: .5,
+        minValue: 0,
+        maxValue: 1,
+        automationRate: "k-rate" 
+      },    
+      {
+        name: "tongue-diameter",
+        defaultValue: 2.43,
+        minValue: 2.05,
+        maxValue: 3.50,
+        automationRate: "k-rate" 
+      },  
+
       //horizontal location of constriction, in segment #, used to simulate a mouse held on the UI
       {
         name: "constriction-index",
         defaultValue: 0,
         minValue: 0,
         maxValue: 1,
-        automationRate: "a-rate"
+        automationRate: "k-rate"
       },
+
       //vertical location of constriction, used to simulate a mouse held on the UI
       {
         name: "constriction-diameter",
         defaultValue: 3,
         maxValue: 3.5,
-        automationRate: "a-rate"
+        automationRate: "k-rate"
       },
 
       {
         name: "lip-diameter",
         defaultValue: 1.5,
         minValue: 0,
-        maxValue: 1.5
+        maxValue: 3,
+        automationRate: "k-rate"
       },
+
       //tract movement speed, determines how fast tract diameters approach their targets. Set to -1 for instant.
       {
         name: "movement-speed",
@@ -376,22 +403,7 @@ class TractProcessor extends AudioWorkletProcessor {
         defaultValue: 1,
         minValue: 0,
         automationRate: "k-rate"
-      },  
-      //tongue index + diameter - simulated horizontal + vertical position of tongue in GUI
-      {
-        name: "tongue-index",
-        defaultValue: .5,
-        minValue: 0,
-        maxValue: 1,
-        automationRate: "k-rate" 
-      },    
-      {
-        name: "tongue-diameter",
-        defaultValue: 2.43,
-        minValue: 2.05,
-        maxValue: 3.50,
-        automationRate: "k-rate" 
-      },  
+      }
     ];
   }
 
@@ -408,6 +420,7 @@ class TractProcessor extends AudioWorkletProcessor {
   junctionOutputL = [];
   diameter = [];
   targetDiameter = [];
+  restDiameter = [];
   A = [];
   glottalReflection = 0.75;
   lipReflection = -0.85;
@@ -428,22 +441,27 @@ class TractProcessor extends AudioWorkletProcessor {
   constrictionIndex = 0;
   constrictionDiameter = 3;
 
+  useConstrictions = true;
   tongueIndex = 12.9;
   tongueDiameter = 2.43;
-
-  lipDiameter = 5;
 
   constructor(options) {
     super();
     this.name = options.processorOptions.name;
+    this.useConstrictions = options.processorOptions.useConstrictions;
     this.init();
-    this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});    
-    this.port.addEventListener("message", msg => {this.diameter = msg.d, this.targetDiameter = msg.td});
+    this.port.start(); 
+    this.port.postMessage({d: this.diameter, v: this.noseDiameter[0]});   
+    this.port.addEventListener("message", msg => {
+      if (msg.data.d) this.diameter = msg.data.d;
+      if (msg.data.td) this.targetDiameter = msg.data.td;
+      if (msg.data.rd) this.restDiameter = msg.data.rd;
+    });
   }
 
   init(n = 44) {
-
     this.n = n;
+
     this.bladeStart = Math.floor(10 * this.n/44);
     this.tipStart = Math.floor(32 * this.n/44);
     this.lipStart = Math.floor(39 *this.n/44);   
@@ -453,17 +471,18 @@ class TractProcessor extends AudioWorkletProcessor {
 
     this.diameter = new Float64Array(this.n);
     this.targetDiameter = new Float64Array(this.n);
+    this.restDiameter = new Float64Array(this.n);
+
+    for (let i = 0; i < this.n; i++) {
+        let diameter = 0;
+        if (i < 7 * this.n / 44-0.5) diameter = 0.6;
+        else if (i < 12 * this.n / 44) diameter = 1.1;
+        else diameter = 1.5;
+        this.restDiameter[i] = diameter;
+    }
 
     this.setTargetDiameters();
-    for (let i = 0; i < this.targetDiameter.length; i++) this.diameter[i] = this.targetDiameter[i]
-
-    // for (let i = 0; i < this.n; i++) {
-    //     let diameter = 0;
-    //     if (i < 7 * this.n / 44-0.5) diameter = 0.6;
-    //     else if (i < 12 * this.n / 44) diameter = 1.1;
-    //     else diameter = 1.5;
-    //     this.diameter[i] = this.targetDiameter[i] = this.diameter[i] || diameter;
-    // }
+    this.diameter = new Float64Array(this.targetDiameter);
     
     this.R = new Float64Array(this.n);
     this.L = new Float64Array(this.n);
@@ -669,19 +688,26 @@ class TractProcessor extends AudioWorkletProcessor {
 
     try {
 
-      for (var i=0; i<this.n; i++) {
-        var diameter = 0;
-        if (i<7*this.n/44-0.5) diameter = 0.6;
-        else if (i<12*this.n/44) diameter = 1.1;
-        else diameter = 1.5;
-        this.targetDiameter[i] = diameter;
-      }
+      this.targetDiameter = new Float64Array(this.restDiameter);
+
+      if (!this.useConstrictions) return;
+
+      // for (let i=0; i<this.n; i++) {
+      //   let diameter = 0;
+      //   if (i<7*this.n/44-0.5) diameter = 0.6;
+      //   else if (i<12*this.n/44) diameter = 1.1;
+      //   else diameter = 1.5;
+      //   this.targetDiameter[i] = diameter;
+      // }
 
       //inscribe tongue position
-      for (var i = this.bladeStart; i < this.lipStart; i++) {
-        var t = 1.1 * Math.PI*(this.tongueIndex - i)/(this.tipStart - this.bladeStart);
-        var fixedTongueDiameter = 2+(this.tongueDiameter-2)/1.5;
-        var curve = (1.5-fixedTongueDiameter + 1.7)*Math.cos(t);
+      const tongueIndex = this.tongueIndex * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
+        + this.tongueLowerIndexBound;
+
+      if (this.useConstrictions) for (let i = this.bladeStart; i < this.lipStart; i++) {
+        let t = 1.1 * Math.PI*(tongueIndex - i)/(this.tipStart - this.bladeStart);
+        let fixedTongueDiameter = 2+(this.tongueDiameter-2)/1.5;
+        let curve = (1.5-fixedTongueDiameter + 1.7)*Math.cos(t);
         if (i == this.bladeStart-2 || i == this.lipStart-1) curve *= 0.8;
         if (i == this.bladeStart || i == this.lipStart-2) curve *= 0.94;               
         this.targetDiameter[i] = 1.5 - curve;
@@ -758,6 +784,8 @@ class TractProcessor extends AudioWorkletProcessor {
 
       const newN = Math.floor(params['n'][0]);
       if (newN != this.n) this.init(newN);
+
+      this.useConstrictions = Boolean(params["use-constrictions"][0]);
       
       //update a bunch of object properties using audioparam values
       this.velumTarget = params["velum-target"][0];
@@ -765,8 +793,7 @@ class TractProcessor extends AudioWorkletProcessor {
       this.constrictionIndex = params["constriction-index"][0] * this.n;
       this.constrictionDiameter = params["constriction-diameter"][0] + 0.3;
 
-      this.tongueIndex = params["tongue-index"][0] * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
-        + this.tongueLowerIndexBound;
+      this.tongueIndex = params["tongue-index"][0];
       this.tongueDiameter = params["tongue-diameter"][0];
 
       this.lipDiameter = params["lip-diameter"][0];

@@ -1,4 +1,5 @@
-import { useEffect, useRef, MouseEvent, Dispatch, SetStateAction, useState } from "react";
+import { linear } from "everpolate";
+import { useEffect, useRef, MouseEvent } from "react";
 
 export type RPT_Voice_Preset = {
     n: number,
@@ -11,25 +12,25 @@ export type RPT_Voice_Preset = {
 }
 
 export function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
-    setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>,
-    reportVowel?: boolean
+    // setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>,
+    // reportVowel?: boolean, 
 }) {
 
-    const {voice, style, setVowel, reportVowel} = props;
+    const {voice, style} = props;
 
-    const [tractVowel, setTractVowel] = useState<{i: Number, d: number}>();
+    // const [tractVowel, setTractVowel] = useState<{i: Number, d: number}>();
     
     const cnvRef = useRef<HTMLCanvasElement>(null);
     const animationRef = useRef(0);
 
-    function getUIVowel() {
-        const vowel = {
-            i: voice.UI.normalizedTongueIndex(), 
-            d: voice.UI.tongueDiameter
-        }
-        setTractVowel(vowel);
-        setVowel?.(vowel);
-    }
+    // function getUIVowel() {
+    //     const vowel = {
+    //         i: voice.UI.normalizedTongueIndex(), 
+    //         d: voice.UI.tongueDiameter
+    //     }
+    //     setTractVowel(vowel);
+    //     setVowel?.(vowel);
+    // }
 
     //on component mount, pass 2D render context to voice UI
     useEffect(() => {
@@ -42,29 +43,31 @@ export function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
             animationRef.current = requestAnimationFrame(getNewFrame);
         }
         getNewFrame();
-        getUIVowel?.();
+        // getUIVowel?.();
 
         return () => cancelAnimationFrame(animationRef.current);
     }, [voice, cnvRef.current]);
 
+
+
     function startMouse(e: MouseEvent) {
         e.preventDefault();
         voice.UI.startMouse(e);
-        getUIVowel();
+        // getUIVowel();
     }
     function endMouse() {
         voice.UI.endMouse();
     }
     function moveMouse(e: MouseEvent) {
         voice.UI.moveMouse(e);
-        if (e.buttons) getUIVowel();
+        // if (e.buttons) getUIVowel();
     }
 
-    const vowelInfo = tractVowel && `Index: ${tractVowel.i.toFixed(2)}, Diameter: ${tractVowel.d.toFixed(2)}`;
+    // const vowelInfo = tractVowel && `Index: ${tractVowel.i.toFixed(2)}, Diameter: ${tractVowel.d.toFixed(2)}`;
 
     return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
         style={{...style, alignSelf: "center"}} onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}
-        title={reportVowel ? vowelInfo : undefined}
+        // title={reportVowel ? vowelInfo : undefined}
     />
 }
 
@@ -80,6 +83,8 @@ export class RPT_Voice {
     name: string | number;
     ctx: AudioContext;
     connected: boolean = false;
+
+    usesConstrictions: boolean;
 
     glottis: AudioWorkletNode;
     tract: AudioWorkletNode;
@@ -112,22 +117,27 @@ export class RPT_Voice {
     UI: TractUI;
 
     //create a new voice using the given audiocontext and destinationNOde (default ctx destination)
-    constructor(name: string | number, preset: RPT_Voice_Preset | null, ctx: AudioContext) {
+    constructor(ctx: AudioContext, name: string | number, 
+        preset: RPT_Voice_Preset = RPT_Voice.defaultPreset, 
+        useConstrictions: boolean = true
+    ) {
+
         this.name = name;
         this.ctx = ctx;
+        this.usesConstrictions = useConstrictions;
 
         this.glottis = new AudioWorkletNode(this.ctx, 'glottis', {
             numberOfInputs: 1, //aspiration noise
             numberOfOutputs: 3, //glottal source, aspiration, noise modulator
             outputChannelCount: [1, 1, 1], 
-            processorOptions: { name: this.name }
+            processorOptions: { name }
         });
 
         this.tract = new AudioWorkletNode(this.ctx, "tract", {
             numberOfInputs: 4, //glottal source, aspiration, fricative noise, noise modulator
             numberOfOutputs: 1,
             outputChannelCount: [1],
-            processorOptions: { name: this.name }
+            processorOptions: { name, useConstrictions }
         });
 
         this.tractN = this.tract.parameters.get("n")!;
@@ -231,6 +241,8 @@ export class RPT_Voice {
         this.gainNode.connect(this.pannerNode);
         this.pannerNode.connect(destination);
         this.connected = true;
+
+        return this;
     }
     
     disconnect() {
@@ -276,7 +288,7 @@ export class RPT_Voice {
 
     setN(n: number) {
         this.tractN.value = n;
-        this.UI.init(n);
+        this.UI.init();
     }
 
     setFrequency(f: number) {
@@ -288,19 +300,28 @@ export class RPT_Voice {
 
     reset() {
         [this.glottis, this.tract].forEach(node => 
-            node.parameters.forEach(param =>
-                param.value = param.defaultValue
-            )
+            node.parameters.forEach(param => param.value = param.defaultValue)
         );
+    }
+
+    setDiameters(dia: number[], dias: ("d" | "td" | "rd")[]) {
+        const n = this.tractN.value;
+        const resampled = new Float64Array(linear(
+           new Array(n).fill(0).map((_, i) => i/(n-1)),
+           dia.map((_, i) => i/(dia.length - 1)),
+           dia
+        ));
+        this.tract.port.postMessage(Object.fromEntries(
+            dias.map(d => [d, resampled])
+        ));
     }
 }
 
 export class TractUI {
-    // name: number | string;
-    ctx?: CanvasRenderingContext2D; //gets assigned a canvas context 
+    ctx?: CanvasRenderingContext2D; 
     cnv?: HTMLCanvasElement;
-    voice: RPT_Voice; //the corresponding RPTVoice object
-    recording: boolean = false;
+
+    voice: RPT_Voice; 
 
     time = 0;
     originX = 340;
@@ -319,8 +340,6 @@ export class TractUI {
     fillColour = 'pink';
     lineColour = '#C070C6';
     
-    n = 44;
-    restDiameter = new Float64Array();
     bladeStart = 0;
     tipStart = 0;
     lipStart = 0;
@@ -338,31 +357,31 @@ export class TractUI {
 
     constructor(voice: RPT_Voice) {
         this.voice = voice;
-        // this.name = voice.name;
         this.init();
     }
 
-    init(n = this.n) {
+    init() {
 
-        this.n = n;
-        this.restDiameter = new Float64Array(this.n);
+        const n = this.voice.tractN.value;
 
-        this.bladeStart = Math.floor(10 * this.n / 44);
-        this.tipStart = Math.floor(32 * this.n / 44);
-        this.lipStart = Math.floor(39 * this.n / 44);
+        this.voice.d = new Float64Array(n);
 
-        for (let i=0; i<this.n; i++)
-        {
-            var diameter = 0;
-            if (i<7*this.n/44-0.5) diameter = 0.6;
-            else if (i<12*this.n/44) diameter = 1.1;
+        this.bladeStart = Math.floor(10 * n / 44);
+        this.tipStart = Math.floor(32 * n / 44);
+        this.lipStart = Math.floor(39 * n / 44);
+
+        for (let i = 0; i < n; i++) {
+            let diameter = 0;
+            if (i < 7*n/44 - 0.5) diameter = 0.6;
+            else if (i < 12*n/44) diameter = 1.1;
             else diameter = 1.5;
-            this.restDiameter[i] = diameter;
+            this.voice.d[i] = diameter;
         }
 
-        this.noseLength = Math.floor(28 * this.n / 44);
-        this.noseStart = this.n - this.noseLength + 1;
+        this.noseLength = Math.floor(28 * n / 44);
+        this.noseStart = n - this.noseLength + 1;
         this.noseDiameter = new Float64Array(this.noseLength);
+
         for (let i = 0; i < this.noseLength; i++) {
             let diameter;
             let d = 2 * (i / this.noseLength);
@@ -372,8 +391,7 @@ export class TractUI {
             this.noseDiameter[i] = diameter;
         }
 
-        this.setRestDiameter();
-        this.voice.tract.port.postMessage({td: this.restDiameter, d: this.restDiameter});
+        this.voice.tract.port.postMessage({td: this.voice.d, d: this.voice.d});
 
         this.tongueLowerIndexBound = this.bladeStart + 2; 
         this.tongueUpperIndexBound = this.tipStart - 3;   
@@ -390,18 +408,6 @@ export class TractUI {
             (this.tongueUpperIndexBound - this.tongueLowerIndexBound);
     }
 
-    setRestDiameter() {
-        for (let i=this.bladeStart; i<this.lipStart; i++)
-        {
-            var t = 1.1 * Math.PI*(this.tongueIndex - i)/(this.tipStart - this.bladeStart);
-            var fixedTongueDiameter = 2+(this.tongueDiameter-2)/1.5;
-            var curve = (1.5-fixedTongueDiameter+this.gridOffset)*Math.cos(t);
-            if (i == this.bladeStart-2 || i == this.lipStart-1) curve *= 0.8;
-            if (i == this.bladeStart || i == this.lipStart-2) curve *= 0.94;               
-            this.restDiameter[i] = 1.5 - curve;
-        }
-    }
-
     draw() {
 
         this.time = Date.now()/1000;
@@ -412,7 +418,7 @@ export class TractUI {
         this.ctx.lineCap = 'round';        
         this.ctx.lineJoin = 'round';  
         
-        this.drawTongueControl();
+        if (this.voice.usesConstrictions) this.drawTongueControl();
         
         var velum = this.voice.v;
         var velumAngle = velum * 4;
@@ -423,11 +429,13 @@ export class TractUI {
         this.ctx.strokeStyle = this.fillColour;
         this.ctx.fillStyle = this.fillColour;
 
+        const n = this.voice.tractN.value;
+
         this.moveTo(1,0);
-        for (let i = 1; i < this.n; i++) {
-            this.lineTo(i, this.voice.d[i]);
-        }
-        for (let i = this.n-1; i >= 2; i--) this.lineTo(i, 0);  
+
+        for (let i = 1; i < n; i++) this.lineTo(i, this.voice.d[i]);
+        for (let i = n - 1; i >= 2; i--) this.lineTo(i, 0);  
+
         this.ctx.closePath();
         this.ctx.stroke();
         this.ctx.fill();
@@ -462,12 +470,12 @@ export class TractUI {
         this.ctx.font="20px Arial";
         this.ctx.textAlign = "center";
         this.ctx.globalAlpha = 1.0;
-        this.drawText(this.n*0.10, 0.425, "throat");         
-        this.drawText(this.n*0.71, -1.8, "nasal");
-        this.drawText(this.n*0.71, -1.3, "cavity");
+        this.drawText(n * 0.10, 0.425, "throat");         
+        this.drawText(n * 0.71, -1.8, "nasal");
+        this.drawText(n * 0.71, -1.3, "cavity");
         this.ctx.font="22px Arial";        
-        this.drawText(this.n*0.64, 1.1, "oral");    
-        this.drawText(this.n*0.74, 1.1, "cavity"); 
+        this.drawText(n * 0.64, 1.1, "oral");    
+        this.drawText(n * 0.74, 1.1, "cavity"); 
 
         this.drawAmplitudes(); 
 
@@ -478,11 +486,11 @@ export class TractUI {
         this.ctx.lineJoin = 'round';
         this.ctx.lineCap = 'round';          
         this.moveTo(1, this.voice.d[0]);
-        for (let i = 2; i < this.n; i++) this.lineTo(i, this.voice.d[i]);
+        for (let i = 2; i < n; i++) this.lineTo(i, this.voice.d[i]);
         this.moveTo(1,0);
         for (let i = 2; i <= this.noseStart-2; i++) this.lineTo(i, 0);
         this.moveTo(this.noseStart+velumAngle-2,0);
-        for (let i = this.noseStart+Math.ceil(velumAngle)-2; i < this.n; i++) this.lineTo(i, 0);   
+        for (let i = this.noseStart+Math.ceil(velumAngle)-2; i < n; i++) this.lineTo(i, 0);   
         this.ctx.stroke();
 
         //for nose
@@ -509,11 +517,10 @@ export class TractUI {
         this.ctx.font="20px Arial";
         this.ctx.textAlign = "center";
         this.ctx.globalAlpha = 0.7;
-        this.drawText(this.n*0.93, 0.8+0.8*this.voice.d[this.n-1], " lip"); 
+        this.drawText(n*0.93, 0.8+0.8*this.voice.d[n-1], " lip"); 
 
         this.drawBackground();
         this.drawPositions();
-
     }
 
     drawText(i: number, d: number, text: string) {
@@ -563,16 +570,16 @@ export class TractUI {
         this.ctx!.strokeStyle = "orchid";
         this.ctx!.lineCap = "butt";
         this.ctx!.globalAlpha = 0.3;
-        for (let i=2; i<this.n-1; i++)
-        {
+
+        const n = this.voice.tractN.value;
+        for (let i = 2; i < n-1; i++) {
             this.ctx!.beginPath();
             this.ctx!.lineWidth = 1; //Math.sqrt(Tract.maxAmplitude[i])*3;
             this.moveTo(i, 0);
             this.lineTo(i, this.voice.d![i]);
             this.ctx!.stroke();
         }
-        for (let i=1; i<this.noseLength-1; i++)
-        {
+        for (let i=1; i<this.noseLength-1; i++) {
             this.ctx!.beginPath();
             this.ctx!.lineWidth = 1; //Math.sqrt(Tract.noseMaxAmplitude[i]) * 3;
             this.moveTo(i+this.noseStart, -this.noseOffset);
@@ -635,32 +642,33 @@ export class TractUI {
         this.ctx!.fillStyle = "orchid";
     }
 
-    drawBackground()
-    {
+    drawBackground() {
+
+        const n = this.voice.tractN.value;
         
         //text
         this.ctx!.fillStyle = "black";
         this.ctx!.font="20px Arial";
         this.ctx!.textAlign = "center";
         this.ctx!.globalAlpha = 0.7;
-        this.drawText(this.n*0.44, -0.28, "soft");
-        this.drawText(this.n*0.51, -0.28, "palate");
-        this.drawText(this.n*0.77, -0.28, "hard");
-        this.drawText(this.n*0.84, -0.28, "palate");
-        this.drawText(this.n*0.95, -0.28, " lip");
+        this.drawText(n * 0.44, -0.28, "soft");
+        this.drawText(n * 0.51, -0.28, "palate");
+        this.drawText(n * 0.77, -0.28, "hard");
+        this.drawText(n * 0.84, -0.28, "palate");
+        this.drawText(n * 0.95, -0.28, " lip");
         
         this.ctx!.font="17px Arial";        
-        this.drawTextStraight(this.n*0.18, 3, "  tongue control");   
+        if (this.voice.usesConstrictions) this.drawTextStraight(n * 0.18, 3, "  tongue control");   
         this.ctx!.textAlign = "left";
-        this.drawText(this.n*1.03, -1.07, "nasals");
-        this.drawText(this.n*1.03, -0.28, "stops");
-        this.drawText(this.n*1.03, 0.51, "fricatives");
+        this.drawText(n * 1.03, -1.07, "nasals");
+        this.drawText(n * 1.03, -0.28, "stops");
+        this.drawText(n * 1.03, 0.51, "fricatives");
         //this.drawTextStraight(1.5, +0.8, "glottis")
         this.ctx!.strokeStyle = "orchid";
         this.ctx!.lineWidth = 2;
         this.ctx!.beginPath();
-        this.moveTo(this.n*1.03, 0); this.lineTo(this.n*1.07, 0); 
-        this.moveTo(this.n*1.03, -this.noseOffset); this.lineTo(this.n*1.07,  -this.noseOffset); 
+        this.moveTo(n * 1.03, 0); this.lineTo(n * 1.07, 0); 
+        this.moveTo(n * 1.03, -this.noseOffset); this.lineTo(n * 1.07,  -this.noseOffset); 
         this.ctx!.stroke();
         this.ctx!.globalAlpha = 0.9;
         this.ctx!.globalAlpha = 1.0;
@@ -677,25 +685,31 @@ export class TractUI {
         this.ctx!.restore();
     }
 
-    drawPositions()
-    {
+    drawPositions() {
+
+        const n = this.voice.tractN.value;
+
         this.ctx!.fillStyle = "orchid";
         this.ctx!.font="24px Arial";
         this.ctx!.textAlign = "center";
         this.ctx!.globalAlpha = 0.6;
-        var a = 2;
-        var b = 1.5;
-        this.drawText(15/44*this.n, a+b*0.60, 'æ'); //pat
-        this.drawText(13/44*this.n, a+b*0.27, 'ɑ'); //part
-        this.drawText(12/44*this.n, a+b*0.00, 'ɒ'); //pot
-        this.drawText(17.7/44*this.n, a+b*0.05, '(ɔ)'); //port (rounded)
-        this.drawText(27/44*this.n, a+b*0.65, 'ɪ'); //pit
-        this.drawText(27.4/44*this.n, a+b*0.21, 'i'); //peat
-        this.drawText(20/44*this.n, a+b*1.00, 'e'); //pet
-        this.drawText(18.1/44*this.n, a+b*0.37, 'ʌ'); //putt   
+        let a = 2;
+        let b = 1.5;
+
+        if (this.voice.usesConstrictions) {
+
+            this.drawText(15/44 * n, a+b*0.60, 'æ'); //pat
+            this.drawText(13/44 * n, a+b*0.27, 'ɑ'); //part
+            this.drawText(12/44 * n, a+b*0.00, 'ɒ'); //pot
+            this.drawText(17.7/44 * n, a+b*0.05, '(ɔ)'); //port (rounded)
+            this.drawText(27/44 * n, a+b*0.65, 'ɪ'); //pit
+            this.drawText(27.4/44 * n, a+b*0.21, 'i'); //peat
+            this.drawText(20/44 * n, a+b*1.00, 'e'); //pet
+            this.drawText(18.1/44 * n, a+b*0.37, 'ʌ'); //putt   
             //put ʊ
-        this.drawText(23/44*this.n, a+b*0.1, '(u)'); //poot (rounded)   
-        this.drawText(21/44*this.n, a+b*0.6, 'ə'); //pert [should be ɜ]
+            this.drawText(23/44 * n, a+b*0.1, '(u)'); //poot (rounded)   
+            this.drawText(21/44 * n, a+b*0.6, 'ə'); //pert [should be ɜ]
+        }
         
         var nasals = -1.1;
         var stops = -0.4;
@@ -704,23 +718,23 @@ export class TractUI {
         this.ctx!.globalAlpha = 0.8;
         
         //approximants
-        this.drawText(38/44*this.n, approximants, 'L');
-        this.drawText(41/44*this.n, approximants, 'w');
-        this.drawText(28.6/44*this.n, approximants, "R")
+        this.drawText(38/44 * n, approximants, 'L');
+        this.drawText(41/44 * n, approximants, 'w');
+        this.drawText(28.6/44 * n, approximants, "R")
         
         //?
-        this.drawText(4.5/44*this.n, 0.37, 'H');
+        this.drawText(4.5/44 * n, 0.37, 'H');
         
         //voiced consonants
-        this.drawText(33/44*this.n, fricatives, 'ʒ/ʃ');     
-        this.drawText(36.5/44*this.n, fricatives, 'z/s');
-        this.drawText(39.5/44*this.n, fricatives, 'v/f');
-        this.drawText(22/44*this.n, stops, 'g/k');
-        this.drawText(35/44*this.n, stops, 'd/t');
-        this.drawText(41.5/44*this.n, stops, 'b/p');
-        this.drawText(22/44*this.n, nasals, 'ŋ');
-        this.drawText(35/44*this.n, nasals, 'n');
-        this.drawText(41/44*this.n, nasals, 'm');  
+        this.drawText(33/44 * n, fricatives, 'ʒ/ʃ');     
+        this.drawText(36.5/44 * n, fricatives, 'z/s');
+        this.drawText(39.5/44 * n, fricatives, 'v/f');
+        this.drawText(22/44 * n, stops, 'g/k');
+        this.drawText(35/44 * n, stops, 'd/t');
+        this.drawText(41.5/44 * n, stops, 'b/p');
+        this.drawText(22/44 * n, nasals, 'ŋ');
+        this.drawText(35/44 * n, nasals, 'n');
+        this.drawText(41/44 * n, nasals, 'm');  
 
     }
 
@@ -778,6 +792,8 @@ export class TractUI {
 
     handleTouches() {
 
+        if (!this.voice.usesConstrictions) return;
+
         let index, diameter;
 
         if (this.tongueTouch && !this.tongueTouch.alive) this.tongueTouch = undefined;
@@ -800,9 +816,9 @@ export class TractUI {
             this.voice.tongue.diameter.value = this.tongueDiameter;
         }
 
-        if (!this.recording) this.setRestDiameter();   
+        // this.setRestDiameter();   
 
-        const targets = [...this.restDiameter]
+        // const targets = [...this.restDiameter]
         this.voice.velumTarget.value = 0.01
 
         for (let j=0; j<this.touchesWithMouse.length; j++) {
@@ -817,31 +833,32 @@ export class TractUI {
                 this.voice.velumTarget.value = 0.4;      
             if (diameter < -0.85-this.noseOffset) continue;
             diameter -= 0.3;
-            if (diameter<0) diameter = 0;       
-            var width=2;
-            if (index<25) width = 10;
-            else if (index>=this.tipStart) width= 5;
-            else width = 10-5*(index-25)/(this.tipStart-25);
-            if (index >= 2 && index < this.n && y<this.cnv!.height && diameter < 3)
-            {
-                let intIndex = Math.round(index);
-                for (let i=-Math.ceil(width)-1; i<width+1; i++) 
-                {   
-                    if (intIndex+i<0 || intIndex+i>=this.n) continue;
-                    var relpos = (intIndex+i) - index;
-                    relpos = Math.abs(relpos)-0.5;
-                    var shrink;
-                    if (relpos <= 0) shrink = 0;
-                    else if (relpos > width) shrink = 1;
-                    else shrink = 0.5*(1-Math.cos(Math.PI * relpos / width));
-                    if (diameter < targets[intIndex+i])
-                    {
-                        targets[intIndex+i] = diameter + (targets[intIndex+i]-diameter)*shrink;
-                    }
-                }
-            }
+            if (diameter<0) diameter = 0;   
+
+            // var width=2;
+            // if (index<25) width = 10;
+            // else if (index>=this.tipStart) width= 5;
+            // else width = 10-5*(index-25)/(this.tipStart-25);
+            // if (index >= 2 && index < this.n && y<this.cnv!.height && diameter < 3)
+            // {
+            //     let intIndex = Math.round(index);
+            //     for (let i=-Math.ceil(width)-1; i<width+1; i++) 
+            //     {   
+            //         if (intIndex+i<0 || intIndex+i>=this.n) continue;
+            //         var relpos = (intIndex+i) - index;
+            //         relpos = Math.abs(relpos)-0.5;
+            //         var shrink;
+            //         if (relpos <= 0) shrink = 0;
+            //         else if (relpos > width) shrink = 1;
+            //         else shrink = 0.5*(1-Math.cos(Math.PI * relpos / width));
+            //         if (diameter < targets[intIndex+i])
+            //         {
+            //             // targets[intIndex+i] = diameter + (targets[intIndex+i]-diameter)*shrink;
+            //         }
+            //     }
+            // }
         }
-        this.voice.constriction.index.value = index ? index/this.n : 0;
+        this.voice.constriction.index.value = index ? index/this.voice.tractN.value : 0;
         this.voice.constriction.diameter!.value = diameter || 0;
         this.voice.fricativeIntensity!.value = 1;
     }
