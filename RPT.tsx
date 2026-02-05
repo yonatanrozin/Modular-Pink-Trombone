@@ -171,6 +171,8 @@ export class RPT_Voice {
             this.v = e.data.v;
         };
 
+        this.UI = new TractUI(this);
+
         const sampleRate = this.ctx.sampleRate;
         const buf = this.ctx.createBuffer(1, sampleRate * 2, sampleRate);
         const bufSamps = buf.getChannelData(0);
@@ -201,7 +203,6 @@ export class RPT_Voice {
         ));
 
         if (preset) this.setPreset(preset);
-        this.UI = new TractUI(this);
     }
 
     /*
