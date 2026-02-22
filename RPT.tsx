@@ -42,31 +42,17 @@ export function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
             voice.UI.draw();
             animationRef.current = requestAnimationFrame(getNewFrame);
         }
-        getNewFrame();
+        requestAnimationFrame(getNewFrame);
         // getUIVowel?.();
 
         return () => cancelAnimationFrame(animationRef.current);
     }, [voice, cnvRef.current]);
 
-
-
-    function startMouse(e: MouseEvent) {
-        e.preventDefault();
-        voice.UI.startMouse(e);
-        // getUIVowel();
-    }
-    function endMouse() {
-        voice.UI.endMouse();
-    }
-    function moveMouse(e: MouseEvent) {
-        voice.UI.moveMouse(e);
-        // if (e.buttons) getUIVowel();
-    }
-
     // const vowelInfo = tractVowel && `Index: ${tractVowel.i.toFixed(2)}, Diameter: ${tractVowel.d.toFixed(2)}`;
 
     return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
-        style={{...style, alignSelf: "center"}} onMouseDown={startMouse} onMouseUp={endMouse} onMouseMove={moveMouse}
+        style={{...style, alignSelf: "center"}} 
+        onMouseDown={voice.UI.startMouse} onMouseUp={voice.UI.endMouse} onMouseMove={voice.UI.moveMouse}
         // title={reportVowel ? vowelInfo : undefined}
     />
 }
@@ -84,7 +70,7 @@ export class RPT_Voice {
     ctx: AudioContext;
     connected: boolean = false;
 
-    usesConstrictions: boolean;
+    useConstrictions: boolean;
 
     glottis: AudioWorkletNode;
     tract: AudioWorkletNode;
@@ -110,6 +96,7 @@ export class RPT_Voice {
     tongue: {index: AudioParam, diameter: AudioParam};
     lipDiameter: AudioParam;
     velumTarget: AudioParam;
+    // glottisIntensity: AudioParam;
 
     d?: Float64Array;
     v: number = 0.01;
@@ -124,17 +111,17 @@ export class RPT_Voice {
 
         this.name = name;
         this.ctx = ctx;
-        this.usesConstrictions = useConstrictions;
+        this.useConstrictions = useConstrictions;
 
         this.glottis = new AudioWorkletNode(this.ctx, 'glottis', {
             numberOfInputs: 1, //aspiration noise
-            numberOfOutputs: 3, //glottal source, aspiration, noise modulator
-            outputChannelCount: [1, 1, 1], 
+            numberOfOutputs: 4, //glottal source, aspiration, noise modulator, intensity
+            outputChannelCount: [1, 1, 1, 1], 
             processorOptions: { name }
         });
 
         this.tract = new AudioWorkletNode(this.ctx, "tract", {
-            numberOfInputs: 4, //glottal source, aspiration, fricative noise, noise modulator
+            numberOfInputs: 5, //glottal source, aspiration, fricative noise, noise modulator, intensity
             numberOfOutputs: 1,
             outputChannelCount: [1],
             processorOptions: { name, useConstrictions }
@@ -162,6 +149,7 @@ export class RPT_Voice {
         };
         this.lipDiameter = this.tract.parameters.get("lip-diameter")!;
         this.velumTarget = this.tract.parameters.get("velum-target")!;
+        // this.glottisIntensity = this.tract.parameters.get("glottis-intensity")!;
 
         this.gainNode = new GainNode(this.ctx, {gain: 1});
         this.pannerNode = new StereoPannerNode(this.ctx, {pan: 0});
@@ -237,6 +225,7 @@ export class RPT_Voice {
         this.glottis.connect(this.tract, 1, 1);         //glottis aspiration -> tract aspiration
         this.fricativeNode.connect(this.tract, 0, 2);       //fricative noise source -> tract fricative
         this.glottis.connect(this.tract, 2, 3);         //glottis noiseModulator -> tract noiseModulator
+        this.glottis.connect(this.tract, 3, 4);         //glottis intensity -> tract intensity
         
         this.tract.connect(this.gainNode);
         this.gainNode.connect(this.pannerNode);
@@ -279,12 +268,12 @@ export class RPT_Voice {
 
     setTongueIndex(i: number) {
         this.tongue.index.value = i;
-        this.UI.tongueIndex = this.UI.tongueIndexFromNormalized(i);
+        // this.UI.tongueIndex = this.UI.tongueIndexFromNormalized(i);
     }
 
     setTongueDiameter(d: number) {
         this.tongue.diameter.value = d;
-        this.UI.tongueDiameter = d;
+        // this.UI.tongueDiameter = d;
     }
 
     setN(n: number) {
@@ -318,6 +307,11 @@ export class RPT_Voice {
     }
 }
 
+type Touch = {
+    x: number, y: number, alive: boolean,
+    index: number, diameter: number
+}
+
 export class TractUI {
     ctx?: CanvasRenderingContext2D; 
     cnv?: HTMLCanvasElement;
@@ -329,11 +323,9 @@ export class TractUI {
     originY = 500; 
     radius = 298; 
     scale = 70;
-    tongueIndex = 12.9;
-    tongueDiameter = 2.43;
     innerTongueControlRadius = 2.05;
     outerTongueControlRadius = 3.5;
-    tongueTouch?: Record<string, any>;
+    tongueTouch?: Touch;
     angleScale = 0.64;
     angleOffset = -0.24;
     noseOffset = 0.8;
@@ -341,20 +333,18 @@ export class TractUI {
     fillColour = 'pink';
     lineColour = '#C070C6';
     
-    bladeStart = 0;
-    tipStart = 0;
-    lipStart = 0;
-    noseLength = 0;
-    noseStart = 0;
-    noseDiameter = new Float64Array();
-    tongueLowerIndexBound = 0;
-    tongueUpperIndexBound = 0;
-    tongueIndexCentre = 0
+    bladeStart!: number;
+    tipStart!: number;
+    lipStart!: number;
+    noseLength!: number;
+    noseStart!: number;
+    noseDiameter!: Float64Array;
+    tongueLowerIndexBound!: number;
+    tongueUpperIndexBound!: number;
+    tongueIndexCentre!: number;
 
-    mouseTouch: Record<string, any> = {alive: false};
-    touchesWithMouse: any[] = [];
-
-    ignoreTongue = false;
+    mouseTouch: Touch = {x: 0, y: 0, alive: false, index: 0, diameter: 0};
+    touchesWithMouse: Touch[] = [];
 
     constructor(voice: RPT_Voice) {
         this.voice = voice;
@@ -404,8 +394,8 @@ export class TractUI {
             (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
     }
 
-    normalizedTongueIndex() {
-        return (this.tongueIndex - this.tongueLowerIndexBound) /
+    normalizedTongueIndex(index: number) {
+        return (index - this.tongueLowerIndexBound) /
             (this.tongueUpperIndexBound - this.tongueLowerIndexBound);
     }
 
@@ -419,7 +409,7 @@ export class TractUI {
         this.ctx.lineCap = 'round';        
         this.ctx.lineJoin = 'round';  
         
-        if (this.voice.usesConstrictions) this.drawTongueControl();
+        if (this.voice.useConstrictions) this.drawTongueControl();
         
         var velum = this.voice.v;
         var velumAngle = velum * 4;
@@ -626,8 +616,9 @@ export class TractUI {
         this.ctx!.globalAlpha = 1.0;         
 
         //circle for tongue position
-        var angle = this.angleOffset + this.tongueIndex * this.angleScale * Math.PI / (this.lipStart-1);
-        var r = this.radius - this.scale*(this.tongueDiameter);
+        var angle = this.angleOffset + this.tongueIndexFromNormalized(this.voice.tongue.index.value) 
+            * this.angleScale * Math.PI / (this.lipStart-1);
+        var r = this.radius - this.scale*(this.voice.tongue.diameter.value);
         var x = this.originX-r*Math.cos(angle);
         var y = this.originY-r*Math.sin(angle);
         this.ctx!.lineWidth = 4;
@@ -659,7 +650,7 @@ export class TractUI {
         this.drawText(n * 0.95, -0.28, " lip");
         
         this.ctx!.font="17px Arial";        
-        if (this.voice.usesConstrictions) this.drawTextStraight(n * 0.18, 3, "  tongue control");   
+        if (this.voice.useConstrictions) this.drawTextStraight(n * 0.18, 3, "  tongue control");   
         this.ctx!.textAlign = "left";
         this.drawText(n * 1.03, -1.07, "nasals");
         this.drawText(n * 1.03, -0.28, "stops");
@@ -697,7 +688,7 @@ export class TractUI {
         let a = 2;
         let b = 1.5;
 
-        if (this.voice.usesConstrictions) {
+        if (this.voice.useConstrictions) {
 
             this.drawText(15/44 * n, a+b*0.60, 'æ'); //pat
             this.drawText(13/44 * n, a+b*0.27, 'ɑ'); //part
@@ -752,35 +743,35 @@ export class TractUI {
         return (this.radius-Math.sqrt(xx*xx + yy*yy))/this.scale;
     }
 
-    startMouse(event: MouseEvent) {
+    startMouse = (event: MouseEvent) => {
+        event.preventDefault();
         const {width, height} = this.cnv!.getBoundingClientRect();
-        let touch: Record<string, any> = {
-            alive: true,
-            x : event.nativeEvent.offsetX/width *this.cnv!.width,
-            y : event.nativeEvent.offsetY/height*this.cnv!.height
+        const x = event.nativeEvent.offsetX/width *this.cnv!.width;
+        const y = event.nativeEvent.offsetY/height*this.cnv!.height;
+        let touch: Touch = {
+            x, y, alive: true,
+            index: this.getIndex(x, y),
+            diameter: this.getDiameter(x, y)
         };
-        touch.index = this.getIndex(touch.x, touch.y);
-        touch.diameter = this.getDiameter(touch.x, touch.y);
-        if (touch.index >= this.tongueLowerIndexBound-4 && touch.index<=this.tongueUpperIndexBound+4 
-            && touch.diameter >= this.innerTongueControlRadius-0.5 && touch.diameter <= this.outerTongueControlRadius+0.5)
-        {
-            this.tongueTouch = touch;
-        }
+        if (touch.index >= this.tongueLowerIndexBound - 4 && 
+            touch.index <= this.tongueUpperIndexBound + 4 && 
+            touch.diameter >= this.innerTongueControlRadius - 0.5 && 
+            touch.diameter <= this.outerTongueControlRadius + 0.5
+        ) this.tongueTouch = touch;
         this.mouseTouch = touch;
         this.touchesWithMouse.push(touch);   
         this.handleTouches();
     }
 
-    endMouse()
-    {
+    endMouse = () => {
         let touch = this.mouseTouch;
         if (!touch.alive) return;
         touch.alive = false;
         this.handleTouches();
     }
 
-    moveMouse(event: MouseEvent)
-    {
+    moveMouse = (event: MouseEvent) => {
+        event.preventDefault();
         const {width, height} = this.cnv!.getBoundingClientRect();
         let touch = this.mouseTouch;
         if (!touch.alive) return;
@@ -793,72 +784,39 @@ export class TractUI {
 
     handleTouches() {
 
-        if (!this.voice.usesConstrictions) return;
-
         let index, diameter;
 
         if (this.tongueTouch && !this.tongueTouch.alive) this.tongueTouch = undefined;
 
-        if (this.tongueTouch && !this.ignoreTongue) {
-            var x = this.tongueTouch.x;
-            var y = this.tongueTouch.y;        
-            index = this.getIndex(x,y);
-            diameter = this.getDiameter(x,y);
-            var fromPoint = (this.outerTongueControlRadius-diameter)/(this.outerTongueControlRadius-this.innerTongueControlRadius);
+        if (this.tongueTouch && this.voice.useConstrictions) {
+            let {index, diameter} = this.tongueTouch;      
+            let fromPoint = (this.outerTongueControlRadius-diameter)/(this.outerTongueControlRadius-this.innerTongueControlRadius);
             fromPoint = constrain(fromPoint, 0, 1);
             fromPoint = Math.pow(fromPoint, 0.58) - 0.2*(fromPoint*fromPoint-fromPoint); //horrible kludge to fit curve to straight line
-            this.tongueDiameter = constrain(diameter, this.innerTongueControlRadius, this.outerTongueControlRadius);
-            this.tongueIndex = constrain(index, this.tongueLowerIndexBound, this.tongueUpperIndexBound);
-            var out = fromPoint*0.5*(this.tongueUpperIndexBound-this.tongueLowerIndexBound);
-            this.tongueIndex = constrain(index, this.tongueIndexCentre-out, this.tongueIndexCentre+out);
+            let tongueDiameter = constrain(diameter, this.innerTongueControlRadius, this.outerTongueControlRadius);
+            let tongueIndex = constrain(index, this.tongueLowerIndexBound, this.tongueUpperIndexBound);
+            let out = fromPoint*0.5*(this.tongueUpperIndexBound-this.tongueLowerIndexBound);
+            tongueIndex = constrain(index, this.tongueIndexCentre-out, this.tongueIndexCentre+out);
 
-            this.voice.tongue.index.value = 
-                (this.tongueIndex - this.tongueLowerIndexBound)/(this.tongueUpperIndexBound - this.tongueLowerIndexBound);
-            this.voice.tongue.diameter.value = this.tongueDiameter;
+            this.voice.tongue.index.value = this.normalizedTongueIndex(tongueIndex);
+            this.voice.tongue.diameter.value = tongueDiameter;
         }
 
-        // this.setRestDiameter();   
-
-        // const targets = [...this.restDiameter]
         this.voice.velumTarget.value = 0.01
 
         for (let j=0; j<this.touchesWithMouse.length; j++) {
-            var touch = this.touchesWithMouse[j];
+            let touch = this.touchesWithMouse[j];
             if (!touch.alive) continue;            
-            var x = touch.x;
-            var y = touch.y;
-            index = this.getIndex(x,y);
-            diameter = this.getDiameter(x,y);
+            index = touch.index;
+            diameter = touch.diameter;
 
             if (index > this.noseStart && diameter < -this.noseOffset)     
                 this.voice.velumTarget.value = 0.4;      
             if (diameter < -0.85-this.noseOffset) continue;
             diameter -= 0.3;
-            if (diameter<0) diameter = 0;   
-
-            // var width=2;
-            // if (index<25) width = 10;
-            // else if (index>=this.tipStart) width= 5;
-            // else width = 10-5*(index-25)/(this.tipStart-25);
-            // if (index >= 2 && index < this.n && y<this.cnv!.height && diameter < 3)
-            // {
-            //     let intIndex = Math.round(index);
-            //     for (let i=-Math.ceil(width)-1; i<width+1; i++) 
-            //     {   
-            //         if (intIndex+i<0 || intIndex+i>=this.n) continue;
-            //         var relpos = (intIndex+i) - index;
-            //         relpos = Math.abs(relpos)-0.5;
-            //         var shrink;
-            //         if (relpos <= 0) shrink = 0;
-            //         else if (relpos > width) shrink = 1;
-            //         else shrink = 0.5*(1-Math.cos(Math.PI * relpos / width));
-            //         if (diameter < targets[intIndex+i])
-            //         {
-            //             // targets[intIndex+i] = diameter + (targets[intIndex+i]-diameter)*shrink;
-            //         }
-            //     }
-            // }
+            if (diameter < 0) diameter = 0;   
         }
+
         this.voice.constriction.index.value = index ? index/this.voice.tractN.value : 0;
         this.voice.constriction.diameter!.value = diameter || 0;
         this.voice.fricativeIntensity!.value = 1;

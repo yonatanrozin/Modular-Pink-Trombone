@@ -236,7 +236,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
       this.setupWaveform(lambda);
     }
     let out = this.normalizedLFWaveform(this.timeInWaveform/this.waveformLength);
-    //MODIFIED: multiply aspiration by 3 to match original volume (why do we have to do this?)
+    //MODIFIED: multiply aspiration by 8 to match original volume (why do we have to do this?)
     let aspiration = this.intensity * (1 - Math.sqrt(this.UITenseness)) * this.getNoiseModulator() * noiseSource * this.aspiration * 8;
     aspiration *= 0.2 + 0.02 * this.noise.simplex1(this.totalTime * 1.99);
     return [out, aspiration];
@@ -284,6 +284,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
       let outArray = outputs[0][0];
       let aspirationArray = outputs[1][0];
       let noiseModArray = outputs[2][0];
+      let intensityArray = outputs[3][0];
       
       //code taken from AudioSystem.doScriptProcessor
       for (let j = 0, N = outArray.length; j < N; j++) {
@@ -305,6 +306,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
         outArray[j] = glottalSource;
         aspirationArray[j] = aspiration;
         noiseModArray[j] = this.getNoiseModulator();
+        intensityArray[j] = this.intensity;
       }
       this.finishBlock();
 
@@ -360,7 +362,7 @@ class TractProcessor extends AudioWorkletProcessor {
         automationRate: "k-rate" 
       },  
 
-      //horizontal location of constriction, in segment #, used to simulate a mouse held on the UI
+      //constriction index - normalized horizontal location of tongue constriction
       {
         name: "constriction-index",
         defaultValue: 0,
@@ -403,6 +405,12 @@ class TractProcessor extends AudioWorkletProcessor {
         defaultValue: 1,
         minValue: 0,
         automationRate: "k-rate"
+      },
+      {
+        name: "glottis-intensity",
+        defaultValue: 1,
+        minValue: 0,
+        maxValue: 1
       }
     ];
   }
@@ -600,16 +608,23 @@ class TractProcessor extends AudioWorkletProcessor {
     }
   }
 
-  addTurbulenceNoise(turbulenceNoise, noiseModulator) {
+  addTurbulenceNoise(turbulenceNoise, noiseModulator, glottisIntensity) {
 
-    if (this.constrictionIndex < 2 || this.constrictionIndex > this.n) return;
-    if (this.constrictionDiameter <= 0) return;     
+    let [constrictionIndex, constrictionDiameter] = [this.constrictionIndex, this.constrictionDiameter];
+    if (constrictionIndex <= 0 || constrictionIndex > this.n) return;
+    if (constrictionDiameter == 0) {
+      constrictionDiameter = this.diameter.reduce((min, d, i) => i >= this.n/5 ? Math.min(min, d) : min, 10);
+    }
 
-    let intensity = this.fricative_strength * 2;
-    this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * intensity, this.constrictionIndex, this.constrictionDiameter, noiseModulator);
+    let intensity = this.fricative_strength * 2 * glottisIntensity * (1 - this.velumTarget/.4);
+    this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * intensity, 
+      constrictionIndex, constrictionDiameter, noiseModulator
+    );
   }
 
   addTurbulenceNoiseAtIndex(turbulenceNoise, index, diameter, noiseModulator) {   
+    diameter += 0.3;
+
     let i = Math.floor(index);
     let delta = index - i;
 
@@ -626,13 +641,12 @@ class TractProcessor extends AudioWorkletProcessor {
     this.L[i+2] += noise1/2;
   }
 
-  runStep(glottalOutput, turbulenceNoise, lambda, noiseModulator) {
+  runStep(glottalOutput, turbulenceNoise, lambda, noiseModulator, glottisIntensity) {
 
     //mouth
     this.processTransients();
-    this.addTurbulenceNoise(turbulenceNoise, noiseModulator);
+    this.addTurbulenceNoise(turbulenceNoise, noiseModulator, glottisIntensity);
     
-    //this.glottalReflection = -0.8 + 1.6 * Glottis.newTenseness;
     this.junctionOutputR[0] = this.L[0] * this.glottalReflection + glottalOutput;
     this.junctionOutputL[this.n] = this.R[this.n - 1] * this.lipReflection; 
     
@@ -690,16 +704,6 @@ class TractProcessor extends AudioWorkletProcessor {
 
       this.targetDiameter = new Float64Array(this.restDiameter);
 
-      if (!this.useConstrictions) return;
-
-      // for (let i=0; i<this.n; i++) {
-      //   let diameter = 0;
-      //   if (i<7*this.n/44-0.5) diameter = 0.6;
-      //   else if (i<12*this.n/44) diameter = 1.1;
-      //   else diameter = 1.5;
-      //   this.targetDiameter[i] = diameter;
-      // }
-
       //inscribe tongue position
       const tongueIndex = this.tongueIndex * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
         + this.tongueLowerIndexBound;
@@ -715,17 +719,16 @@ class TractProcessor extends AudioWorkletProcessor {
 
       //inscribe tongue constriction
       let index = this.constrictionIndex;
-      let dia = this.constrictionDiameter;
+      let dia = this.constrictionDiameter + 0.3;
 
       if (index && (dia > -1.6)) {
       
-        if (index > this.noseStart && dia < -0.8) this.velumTarget = 0.4;
         dia -= 0.3;
         if (dia < 0) dia = 0;     
         
         let width = map(index, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
 
-        if (index >= 2 && index < this.n && dia < 3) {
+        if (index >= 1 && index < this.n && dia < 3) {
 
           let intIndex = Math.round(index);
           for (let i=-Math.ceil(width)-1; i<width+1; i++) {   
@@ -774,24 +777,23 @@ class TractProcessor extends AudioWorkletProcessor {
     let aspiration = inputs[1][0];
     let fricativeNoise = inputs[2][0];
     let noiseModulator = inputs[3][0];
-
-    let outArray = outputs[0][0];
-
-    //handle undefined input array (for some reason)
-    if ([glottalSignal, aspiration, fricativeNoise, noiseModulator].includes(undefined)) return true;
+    let glottisIntensity = inputs[4][0] ?? new Float64Array(128).fill(1);
     
+    let outArray = outputs[0][0];
+    
+    //handle undefined input arrays (for some reason)
+    if ([glottalSignal, aspiration, fricativeNoise, noiseModulator].includes(undefined)) return true;
+        
     try {
 
       const newN = Math.floor(params['n'][0]);
       if (newN != this.n) this.init(newN);
-
-      this.useConstrictions = Boolean(params["use-constrictions"][0]);
       
       //update a bunch of object properties using audioparam values
       this.velumTarget = params["velum-target"][0];
 
       this.constrictionIndex = params["constriction-index"][0] * this.n;
-      this.constrictionDiameter = params["constriction-diameter"][0] + 0.3;
+      this.constrictionDiameter = params["constriction-diameter"][0];
 
       this.tongueIndex = params["tongue-index"][0];
       this.tongueDiameter = params["tongue-diameter"][0];
@@ -805,16 +807,18 @@ class TractProcessor extends AudioWorkletProcessor {
       this.transientStrength = params["transients"][0];
       
       for (let j = 0, N = outArray.length; j < N; j++) {
+
+        let intensity = glottisIntensity[0];
         
         let lambda1 = j / N;
         let lambda2 = (j + 0.5) / N;
         let glottalOutput = aspiration[j] + glottalSignal[j];
         
         let vocalOutput = 0;
-        this.runStep(glottalOutput, fricativeNoise[j], lambda1, noiseModulator[j]);
+        this.runStep(glottalOutput, fricativeNoise[j], lambda1, noiseModulator[j], intensity);
         vocalOutput += this.lipOutput + this.noseOutput;
         
-        this.runStep(glottalOutput, fricativeNoise[j], lambda2, noiseModulator[j]);
+        this.runStep(glottalOutput, fricativeNoise[j], lambda2, noiseModulator[j], intensity);
         vocalOutput += this.lipOutput + this.noseOutput;
 
         let samp = vocalOutput * 0.125;
