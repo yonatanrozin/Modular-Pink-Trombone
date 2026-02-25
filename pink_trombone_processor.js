@@ -79,7 +79,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
         maxValue: 1,
         automationRate: "k-rate"
       },
-      //intensity: volume of voiced (pitched) aspect of the voice. Does not affect fricatives and transients.
+      //air flow intensity - not exactly gain!
       {
         name: "intensity",
         defaultValue: 1,
@@ -565,11 +565,11 @@ class TractProcessor extends AudioWorkletProcessor {
       let diameter = this.diameter[i];
       let targetDiameter = this.targetDiameter[i];
       if (diameter <= 0.05) newLastObstruction = i;
-      let slowReturn; 
-      if (i < this.noseStart) slowReturn = 0.6;
-      else if (i >= this.tipStart) slowReturn = 1.0; 
-      else slowReturn = 0.6 + 0.4 * (i - this.noseStart) / (this.tipStart - this.noseStart);
-      this.diameter[i] = moveTowards(diameter, targetDiameter, slowReturn * amount, 2 * amount);
+      let slowReturn = 1; 
+      // if (i < this.noseStart) slowReturn = 0.6;
+      // else if (i >= this.tipStart) slowReturn = 1.0; 
+      // else slowReturn = 0.6 + 0.4 * (i - this.noseStart) / (this.tipStart - this.noseStart);
+      this.diameter[i] = moveTowards(diameter, targetDiameter, slowReturn * amount, slowReturn * amount);
     }
     if (this.lastObstruction > -1 && newLastObstruction == -1 && this.noseA[0] < 0.05) { //&& this.fricativeStrength (???)
       this.addTransient(this.lastObstruction);
@@ -610,15 +610,10 @@ class TractProcessor extends AudioWorkletProcessor {
 
   addTurbulenceNoise(turbulenceNoise, noiseModulator, glottisIntensity) {
 
-    let [constrictionIndex, constrictionDiameter] = [this.constrictionIndex, this.constrictionDiameter];
-    if (constrictionIndex <= 0 || constrictionIndex > this.n) return;
-    if (constrictionDiameter == 0) {
-      constrictionDiameter = this.diameter.reduce((min, d, i) => i >= this.n/5 ? Math.min(min, d) : min, 10);
-    }
-
+    if (this.constrictionIndex <= 0 || this.constrictionIndex > this.n) return;
     let intensity = this.fricative_strength * 2 * glottisIntensity * (1 - this.velumTarget/.4);
     this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * intensity, 
-      constrictionIndex, constrictionDiameter, noiseModulator
+      this.constrictionIndex, this.constrictionDiameter, noiseModulator
     );
   }
 
@@ -700,36 +695,32 @@ class TractProcessor extends AudioWorkletProcessor {
 
   setTargetDiameters() {
 
-    try {
+    this.targetDiameter = new Float64Array(this.restDiameter);
 
-      this.targetDiameter = new Float64Array(this.restDiameter);
+    if (this.useConstrictions) {
+      //inscribe tongue position and constriction
 
-      //inscribe tongue position
-      const tongueIndex = this.tongueIndex * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
+      const t_index = this.tongueIndex * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
         + this.tongueLowerIndexBound;
+      const t_dia = this.tongueDiameter;
 
-      if (this.useConstrictions) for (let i = this.bladeStart; i < this.lipStart; i++) {
-        let t = 1.1 * Math.PI*(tongueIndex - i)/(this.tipStart - this.bladeStart);
-        let fixedTongueDiameter = 2+(this.tongueDiameter-2)/1.5;
+      for (let i = this.bladeStart; i < this.lipStart; i++) {
+        let t = 1.1 * Math.PI*(t_index - i)/(this.tipStart - this.bladeStart);
+        let fixedTongueDiameter = 2+(t_dia-2)/1.5;
         let curve = (1.5-fixedTongueDiameter + 1.7)*Math.cos(t);
         if (i == this.bladeStart-2 || i == this.lipStart-1) curve *= 0.8;
         if (i == this.bladeStart || i == this.lipStart-2) curve *= 0.94;               
         this.targetDiameter[i] = 1.5 - curve;
       }
 
-      //inscribe tongue constriction
-      let index = this.constrictionIndex;
-      let dia = this.constrictionDiameter + 0.3;
-
-      if (index && (dia > -1.6)) {
-      
-        dia -= 0.3;
-        if (dia < 0) dia = 0;     
-        
+      const index = this.constrictionIndex;
+      const dia = Math.max(0, this.constrictionDiameter);
+  
+      if (index) {        
         let width = map(index, 25/44*this.n, this.tipStart, 10, 5)/44*this.n;
-
+  
         if (index >= 1 && index < this.n && dia < 3) {
-
+  
           let intIndex = Math.round(index);
           for (let i=-Math.ceil(width)-1; i<width+1; i++) {   
             if (intIndex+i<0 || intIndex+i >= this.n) continue;
@@ -744,29 +735,46 @@ class TractProcessor extends AudioWorkletProcessor {
             }
           }
         }
-
       }
+    } 
 
-      //inscribe lip constriction
-      let lIndex = this.n - 2;
-      let lDia = this.lipDiameter;
-      let lWidth = 5;
-
-      var intIndex = Math.round(lIndex);
-      for (var i=-Math.ceil(lWidth)-1; i<lWidth+1; i++) {   
-        if (intIndex+i<0 || intIndex+i >= this.n) continue;
-        var relpos = (intIndex+i) - lIndex;
-        relpos = Math.abs(relpos)-0.5;
-        var shrink;
-        if (relpos <= 0) shrink = 0;
-        else if (relpos > lWidth) shrink = 1;
-        else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / lWidth)); //0.5 * ...
-        if (lDia < this.targetDiameter[intIndex+i]) {
-          this.targetDiameter[intIndex+i] = lDia + (this.targetDiameter[intIndex+i]-lDia)*shrink;
+    else {
+      //calculate constriction index + diameter from tract measurements
+      let avg = 10;
+      for (let i = this.tongueLowerIndexBound; i < this.diameter.length - 2; i++) {
+        const d = this.diameter[i];
+        if (d === 0) {
+          this.constrictionIndex = this.constrictionDiameter = 0;
+          break;
+        }
+        const newAvg = (this.diameter[i-2] + this.diameter[i-1] + d + this.diameter[i+1] + this.diameter[i+2]) / 5;
+        if (newAvg < avg) { 
+          avg = newAvg;
+          this.constrictionIndex = i; 
+          this.constrictionDiameter = avg; 
         }
       }
-    
-    } catch (e) {console.log(e)}
+      // if (Math.random() < .01) console.log(this.diameter, this.constrictionIndex, this.constrictionDiameter);
+    }
+
+    //inscribe lip constriction
+    let lIndex = this.n - 2;
+    let lDia = this.lipDiameter;
+    let lWidth = 5;
+
+    var intIndex = Math.round(lIndex);
+    for (var i=-Math.ceil(lWidth)-1; i<lWidth+1; i++) {   
+      if (intIndex+i<0 || intIndex+i >= this.n) continue;
+      var relpos = (intIndex+i) - lIndex;
+      relpos = Math.abs(relpos)-0.5;
+      var shrink;
+      if (relpos <= 0) shrink = 0;
+      else if (relpos > lWidth) shrink = 1;
+      else shrink = 0.5 * (1-Math.cos(Math.PI * relpos / lWidth)); //0.5 * ...
+      if (lDia < this.targetDiameter[intIndex+i]) {
+        this.targetDiameter[intIndex+i] = lDia + (this.targetDiameter[intIndex+i]-lDia)*shrink;
+      }
+    }
   }
         
   process(inputs, outputs, params) {
