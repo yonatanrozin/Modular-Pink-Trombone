@@ -1,322 +1,196 @@
-import { linear } from "everpolate";
-import { useEffect, useRef, MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import RPTProcessors from "./processors.ts?worker&url";
 
-export type RPT_Voice_Preset = {
-    n: number,
-    frequency: number,
-    tenseness: number,
-    aspiration?: number,
-    eq?: [number, number],
-    gain: number,
-    pan?: number,
+export async function addRPT(ctx: AudioContext) {
+    await ctx.audioWorklet.addModule(RPTProcessors);
 }
 
-export function Tract(props: {voice: RPT_Voice, style?: React.CSSProperties,
-    // setVowel?: Dispatch<SetStateAction<{i: number, d: number} | undefined>>,
-    // reportVowel?: boolean, 
-}) {
-
-    const {voice, style} = props;
-
-    // const [tractVowel, setTractVowel] = useState<{i: Number, d: number}>();
-    
-    const cnvRef = useRef<HTMLCanvasElement>(null);
-    const animationRef = useRef(0);
-
-    // function getUIVowel() {
-    //     const vowel = {
-    //         i: voice.UI.normalizedTongueIndex(), 
-    //         d: voice.UI.tongueDiameter
-    //     }
-    //     setTractVowel(vowel);
-    //     setVowel?.(vowel);
-    // }
-
-    //on component mount, pass 2D render context to voice UI
-    useEffect(() => {
-        if (!cnvRef.current) return;
-        voice.UI.cnv = cnvRef.current;
-        voice.UI.ctx = cnvRef.current?.getContext('2d')!;
-
-        function getNewFrame() {
-            voice.UI.draw();
-            animationRef.current = requestAnimationFrame(getNewFrame);
-        }
-        requestAnimationFrame(getNewFrame);
-        // getUIVowel?.();
-
-        return () => cancelAnimationFrame(animationRef.current);
-    }, [voice, cnvRef.current]);
-
-    // const vowelInfo = tractVowel && `Index: ${tractVowel.i.toFixed(2)}, Diameter: ${tractVowel.d.toFixed(2)}`;
-
-    return <canvas className="tractCanvas" width={600} height={600} ref={cnvRef} 
-        style={{...style, alignSelf: "center"}} 
-        onMouseDown={voice.UI.startMouse} onMouseUp={voice.UI.endMouse} onMouseMove={voice.UI.moveMouse}
-        // title={reportVowel ? vowelInfo : undefined}
-    />
+export type RPTTractMessageData = {
+    diameters?: Float64Array,
+    velum?: number
 }
 
-export class RPT_Voice {
+export default class RPT {
 
-    static defaultPreset: RPT_Voice_Preset = {
-        "n": 44,
-        "frequency": 140, "tenseness": 0.7,
-        "eq": [0, 0],
-        gain: 1
-    }
+    private whiteNoise: AudioBufferSourceNode;
+    private aspirationFilter: BiquadFilterNode;
+    private fricativeFilter: BiquadFilterNode;
+    private glottis: RPTGlottisNode;
+    private tract: RPTTractNode;
+    private gainNode: GainNode;
+
+    connected = false;
+
+    get frequency() { return this.glottis.frequency; }
+    get tenseness() { return this.glottis.tenseness; }
+    get tensenessScale() { return this.glottis.tensenessScale; }
+    get intensity() { return this.glottis.intensity; }
     
-    name: string | number;
-    ctx: AudioContext;
-    connected: boolean = false;
+    get tractN() { return this.tract.n; }
+    get tongueIndex() { return this.tract.tongueIndex; }
+    get tongueDiameter() { return this.tract.tongueDiameter; }
+    get constrictionIndex() { return this.tract.constrictionIndex; }
+    get constrictionDiameter() { return this.tract.constrictionDiameter; }
+    get velumTarget() { return this.tract.velumTarget; }
 
-    useConstrictions: boolean;
-
-    glottis: AudioWorkletNode;
-    tract: AudioWorkletNode;
-    gainNode: GainNode;
-    pannerNode: StereoPannerNode;
-    noiseNode: AudioBufferSourceNode;
-    aspirationNode: BiquadFilterNode;
-    fricativeNode: BiquadFilterNode;
-    eqFilterNodes: BiquadFilterNode[];
-
-    tractN: AudioParam;
-    frequency: AudioParam;
-    aspirationIntensity: AudioParam;
-    pitchbend: AudioParam;
-    tractSpeed: AudioParam;
-
-    fricativeIntensity: AudioParam;
-    transientIntensity: AudioParam;
-    tenseness: {base: AudioParam,mult: AudioParam};
+    get gain() { return this.gainNode.gain; }
+    get diameters() { return this.tract.diameters; }
+    get velum() { return this.tract.velum; }
     
-    intensity: AudioParam;
-    constriction: {index: AudioParam, diameter: AudioParam};
-    tongue: {index: AudioParam, diameter: AudioParam};
-    lipDiameter: AudioParam;
-    velumTarget: AudioParam;
-    // glottisIntensity: AudioParam;
-
-    diameters?: Float64Array;
-    velum: number = 0.01;
-
-    UI: TractUI;
-
-    //create a new voice using the given audiocontext and destinationNOde (default ctx destination)
-    constructor(ctx: AudioContext, name: string | number, 
-        preset: RPT_Voice_Preset = RPT_Voice.defaultPreset, 
-        useConstrictions: boolean = true
-    ) {
-
-        this.name = name;
-        this.ctx = ctx;
-        this.useConstrictions = useConstrictions;
-
-        this.glottis = new AudioWorkletNode(this.ctx, 'glottis', {
-            numberOfInputs: 1, //aspiration noise
-            numberOfOutputs: 4, //glottal source, aspiration, noise modulator, intensity
-            outputChannelCount: [1, 1, 1, 1], 
-            processorOptions: { name }
-        });
-
-        this.tract = new AudioWorkletNode(this.ctx, "tract", {
-            numberOfInputs: 5, //glottal source, aspiration, fricative noise, noise modulator, intensity
-            numberOfOutputs: 1,
-            outputChannelCount: [1],
-            processorOptions: { name, useConstrictions }
-        });
-
-        this.tractN = this.tract.parameters.get("n")!;
-        this.frequency = this.glottis.parameters.get("frequency")!;
-        this.intensity = this.glottis.parameters.get("intensity")!;
-        this.aspirationIntensity = this.glottis.parameters.get("aspiration")!;
-        this.fricativeIntensity = this.tract.parameters.get("fricatives")!;
-        this.transientIntensity = this.tract.parameters.get("transients")!;
-        this.pitchbend = this.glottis.parameters.get("pitchbend")!;
-        this.tenseness = {
-            base: this.glottis.parameters.get("tenseness")!,
-            mult: this.glottis.parameters.get("tenseness-mult")!
-        }
-        this.tractSpeed = this.tract.parameters.get("movement-speed")!;
-        this.constriction = {
-            index: this.tract.parameters.get("constriction-index")!,
-            diameter: this.tract.parameters.get("constriction-diameter")!
-        }
-        this.tongue = {
-            index: this.tract.parameters.get("tongue-index")!,
-            diameter: this.tract.parameters.get("tongue-diameter")!
-        };
-        this.lipDiameter = this.tract.parameters.get("lip-diameter")!;
-        this.velumTarget = this.tract.parameters.get("velum-target")!;
-        // this.glottisIntensity = this.tract.parameters.get("glottis-intensity")!;
-
-        this.gainNode = new GainNode(this.ctx, {gain: 1});
-        this.pannerNode = new StereoPannerNode(this.ctx, {pan: 0});
-
-        this.tract.port.onmessage = (e) => {
-            this.diameters = e.data.d; 
-            this.velum = e.data.v;
-        };
-
-        this.UI = new TractUI(this);
-
-        const sampleRate = this.ctx.sampleRate;
-        const buf = this.ctx.createBuffer(1, sampleRate * 2, sampleRate);
-        const bufSamps = buf.getChannelData(0);
-        for (let i = 0; i < sampleRate * 2; i++) { 
-            bufSamps[i] = Math.random();
-        };
-
-        this.noiseNode = this.ctx.createBufferSource();
-        this.noiseNode.buffer = buf;
-        this.noiseNode.loop = true;
-        this.noiseNode.start();
-
-        this.aspirationNode = this.ctx.createBiquadFilter();
-        this.aspirationNode.type = "bandpass";
-        this.aspirationNode.frequency.value = 500;
-        this.aspirationNode.Q.value = 0.5;
-        
-        this.fricativeNode = this.ctx.createBiquadFilter();
-        this.fricativeNode.type = "bandpass";
-        this.fricativeNode.frequency.value = 1000;
-        this.fricativeNode.Q.value = 0.5;
-
-        const filterCount = 2;
-        this.eqFilterNodes = new Array(filterCount).fill(undefined).map((_, i) => new BiquadFilterNode(this.ctx, 
-            {Q: .431516, type: i == 0 ? "lowshelf" : i == filterCount - 1 ? "highshelf" : "peaking",
-                frequency: [100, 3900][i]
-            }
-        ));
-
-        if (preset) this.setPreset(preset);
+    constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
+        this.whiteNoise = this.getWhiteNoiseSource(ctx);
+        this.aspirationFilter = this.getAspirationFilter(ctx);
+        this.fricativeFilter = this.getFricativeFilter(ctx);
+        this.glottis = new RPTGlottisNode(ctx);
+        this.tract = new RPTTractNode(ctx, autoConstrictions);
+        this.gainNode = new GainNode(ctx);
+        this.whiteNoise.start();
+        this.connect(ctx.destination);
     }
 
-    /*
-    RPT Voice DSP chain:
-        Glottis 
-            Inputs: Aspiration noise source
-            Outputs
-                glottal source -> EQ eqFilterNodes -> tract glottal source
-                aspiration -> tract aspiration
-                noise modulator -> tract noise modulator
-        Tract 
-            Inputs: glottal source, aspiration, fricative noise source, noiseModulator
-            Outputs
-                filtered voice -> gain -> pan -> destination        
-    */
     connect(destination: AudioNode) {
         this.disconnect();
-        
-        //connect noise source to aspiration + fricative eqFilterNodes
-        this.noiseNode.connect(this.aspirationNode);
-        this.noiseNode.connect(this.fricativeNode);
-        
-        this.aspirationNode.connect(this.glottis, 0, 0);    //aspiration noise source -> glottis aspiration
-        
-        this.glottis.connect(this.eqFilterNodes[0], 0, 0);    //glottis glottal source -> EQ eqFilterNodes    
-        for (let i = 1; i < this.eqFilterNodes.length; i++) { //daisy-chain EQ eqFilterNodes
-            this.eqFilterNodes[i-1].connect(this.eqFilterNodes[i]);
-        }
-        this.eqFilterNodes[this.eqFilterNodes.length - 1]           
-            .connect(this.tract, 0, 0);                 //EQ eqFilterNodes -> tract glottal source 
-
-        this.glottis.connect(this.tract, 1, 1);         //glottis aspiration -> tract aspiration
-        this.fricativeNode.connect(this.tract, 0, 2);       //fricative noise source -> tract fricative
-        this.glottis.connect(this.tract, 2, 3);         //glottis noiseModulator -> tract noiseModulator
-        this.glottis.connect(this.tract, 3, 4);         //glottis intensity -> tract intensity
-        
+        this.whiteNoise.connect(this.aspirationFilter);
+        this.aspirationFilter.connect(this.glottis);
+        this.aspirationFilter.connect(this.tract, 0, 1);
+        this.whiteNoise.connect(this.fricativeFilter);
+        this.fricativeFilter.connect(this.glottis);
+        this.fricativeFilter.connect(this.tract, 0, 1);
+        this.glottis.connect(this.tract, 0, 0);
+        this.glottis.connect(this.tract, 1, 2);
+        this.glottis.connect(this.tract, 2, 3);
         this.tract.connect(this.gainNode);
-        this.gainNode.connect(this.pannerNode);
-        this.pannerNode.connect(destination);
+        this.gainNode.connect(destination);
         this.connected = true;
-
-        return this;
     }
-    
+
     disconnect() {
-        this.connected = false;
-        this.noiseNode.disconnect();
-        this.aspirationNode.disconnect();
-        this.fricativeNode.disconnect();
+        this.whiteNoise.disconnect();
+        this.aspirationFilter.disconnect();
+        this.fricativeFilter.disconnect();
         this.glottis.disconnect();
-        this.eqFilterNodes.forEach((f) => f.disconnect());
         this.tract.disconnect();
         this.gainNode.disconnect();
-        this.pannerNode.disconnect();
+        this.connected = false;
     }
 
-    setGain(gain: number) {
-        this.gainNode.gain.value = gain;
+    setDiameters(diameters: Float64Array) {
+        this.tract.setDiameters(diameters);
     }
 
-    setPanning(pan: number) {
-        this.pannerNode.pan.value = pan;
+    UIComponent = () => this.tract.UIComponent({glottis: this.glottis});
+
+    private getWhiteNoiseSource(ctx: AudioContext): AudioBufferSourceNode {
+        const whiteNoise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const samples = whiteNoise.getChannelData(0);
+        for (let i = 0; i < samples.length; i++) samples[i] = Math.random();
+        const source = ctx.createBufferSource();
+        source.buffer = whiteNoise;
+        source.loop = true;
+        return source;
     }
 
-    setPreset(preset: RPT_Voice_Preset) {
-        this.setFrequency(preset.frequency);
-        this.tenseness.base.value = preset.tenseness;
-        this.setN(preset.n);
-        this.eqFilterNodes.forEach(f => f.gain.value = 0);
-        preset.eq?.forEach((f, i) => this.eqFilterNodes[i].gain.value = f);
-        this.setGain(preset.gain ?? 1);
-        this.aspirationIntensity.value = preset.aspiration ?? 1;
-        this.setPanning(preset.pan || 0);
+    private getAspirationFilter(ctx: AudioContext): BiquadFilterNode {
+        const aspirateFilter = ctx.createBiquadFilter();
+        aspirateFilter.type = "bandpass";
+        aspirateFilter.frequency.value = 500;
+        aspirateFilter.Q.value = 0.5;
+        return aspirateFilter;
     }
 
-    setTongueIndex(i: number) {
-        this.tongue.index.value = i;
-        // this.UI.tongueIndex = this.UI.tongueIndexFromNormalized(i);
-    }
-
-    setTongueDiameter(d: number) {
-        this.tongue.diameter.value = d;
-        // this.UI.tongueDiameter = d;
-    }
-
-    setN(n: number) {
-        this.tractN.value = n;
-        this.UI.init();
-    }
-
-    setFrequency(f: number) {
-        this.frequency.value = f;
-        for (let i = 0; i < this.eqFilterNodes.length; i++) {
-            this.eqFilterNodes[i].frequency.value = f * Math.pow(1.259921, i);
-        }
-    }
-
-    reset() {
-        [this.glottis, this.tract].forEach(node => 
-            node.parameters.forEach(param => param.value = param.defaultValue)
-        );
-    }
-
-    setDiameters(dia: number[], dias: ("d" | "td" | "rd")[]) {
-        const n = this.tractN.value;
-        const resampled = new Float64Array(linear(
-           new Array(n).fill(0).map((_, i) => i/(n-1)),
-           dia.map((_, i) => i/(dia.length - 1)),
-           dia
-        ));
-        this.tract.port.postMessage(Object.fromEntries(
-            dias.map(d => [d, resampled])
-        ));
+    private getFricativeFilter(ctx: AudioContext): BiquadFilterNode {
+        const fricativeFilter = ctx.createBiquadFilter();
+        fricativeFilter.type = "bandpass";
+        fricativeFilter.frequency.value = 1000;
+        fricativeFilter.Q.value = 0.5;
+        return fricativeFilter;
     }
 }
 
-type TractTouch = {
+export class RPTGlottisNode extends AudioWorkletNode {
+
+    get frequency() { return this.parameters.get("frequency")! }
+    get tenseness() { return this.parameters.get("tenseness")! }
+    get tensenessScale() { return this.parameters.get("tenseness-scale")! }
+    get intensity() { return this.parameters.get("intensity")! }
+
+    constructor(ctx: AudioContext) {
+        super(ctx, "glottis-processor", {
+            numberOfOutputs: 3, //glottal signal, noise modulator, intensity
+            outputChannelCount: [1, 1, 1],
+        });
+    }
+}
+
+export class RPTTractNode extends AudioWorkletNode {
+
+    diameters?: Float64Array;
+    velum?: number;
+
+    get n() { return this.parameters.get("n")! }
+    get tongueIndex() { return this.parameters.get("tongue-index")! }
+    get tongueDiameter() { return this.parameters.get("tongue-diameter")! }
+    get constrictionIndex() { return this.parameters.get("constriction-index")! }
+    get constrictionDiameter() { return this.parameters.get("constriction-diameter")! }
+    get velumTarget() { return this.parameters.get("velum-target")! }
+
+    constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
+        super(ctx, "tract-processor", {
+            numberOfInputs: 4, //glottal signal, white noise, noise modulator, glottis intensity
+            processorOptions: {autoConstrictions}
+        });
+        this.port.start();
+        this.port.onmessage = this.onPortMessage;
+    }   
+
+    setDiameters(diameters: Float64Array) {
+        this.port.postMessage({diameters});
+    }
+
+    UIComponent = (props: {glottis?: RPTGlottisNode}) => {
+
+        const {glottis} = props;
+        const [UI, setUI] = useState<RPTTractUI>();
+        const canvasRef = useRef<HTMLCanvasElement>(null);
+        const animationFrame = useRef<number>();
+
+        useEffect(() => { setUI(new RPTTractUI(this, glottis)); }, [this]);
+
+        useEffect(() => {
+            if (!canvasRef.current || !UI) return;
+            UI.cnv = canvasRef.current;
+            UI.ctx = canvasRef.current.getContext("2d")!;
+            (function loop() {
+                UI!.draw();
+                animationFrame.current = requestAnimationFrame(loop);
+            })();
+            return () => { cancelAnimationFrame(animationFrame.current!); }
+        }, [canvasRef, UI]);
+
+        if (UI) return <canvas ref={canvasRef} width={600} height={glottis ? 700 : 600} className="RPT-tract-canvas"
+            onMouseDown={UI.startMouse} onMouseUp={UI.endMouse} onMouseMove={UI.moveMouse} 
+        />
+    }
+
+    private onPortMessage = ({data}: MessageEvent<RPTTractMessageData>) => {
+        if (data.diameters) this.diameters = data.diameters;
+        if (data.velum) this.velum = data.velum;
+    }
+}
+
+type RPTTouch = {
     x: number, y: number, alive: boolean,
     index: number, diameter: number
 }
 
-export class TractUI {
+const palePink = "#ffeef5";
+
+export class RPTTractUI {
     ctx?: CanvasRenderingContext2D; 
     cnv?: HTMLCanvasElement;
 
-    voice: RPT_Voice; 
+    tract: RPTTractNode; 
+    glottis?: RPTGlottisNode;
 
     originX = 340;
     originY = 500; 
@@ -324,7 +198,8 @@ export class TractUI {
     scale = 70;
     innerTongueControlRadius = 2.05;
     outerTongueControlRadius = 3.5;
-    tongueTouch?: TractTouch;
+    tongueTouch?: RPTTouch;
+    keyboardTouch?: RPTTouch;
     angleScale = 0.64;
     angleOffset = -0.24;
     noseOffset = 0.8;
@@ -332,9 +207,20 @@ export class TractUI {
     fillColour = 'pink';
     lineColour = '#C070C6';
 
-    get n () { return this.voice.tractN.value; }
-    get tongueIndex() { return this.voice.tongue.index.value; }
-    get tongueDiameter() { return this.voice.tongue.diameter.value; }
+    glottisX = 240;
+    glottisY = 530;
+    keyboardTop = 600;
+    keyboardLeft = 0;
+    keyboardWidth = 600;
+    keyboardHeight = 100;
+    semitones = 20;
+    marks = [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0];
+    baseNote = 87.3071;
+
+    get n () { return this.tract.n.value; }
+    get tongueIndex() { return this.tract.tongueIndex.value; }
+    get tongueDiameter() { return this.tract.tongueDiameter.value; }
+    get diameters() { return this.tract.diameters; }
 
     get bladeStart() { return Math.floor(10 * this.n / 44); }
     get lipStart() { return Math.floor(39 * this.n / 44); }
@@ -349,11 +235,12 @@ export class TractUI {
 
     noseDiameter!: Float64Array;
 
-    mouseTouch: TractTouch = {x: 0, y: 0, alive: false, index: 0, diameter: 0};
-    touchesWithMouse: TractTouch[] = [];
+    mouseTouch: RPTTouch = {x: 0, y: 0, alive: false, index: 0, diameter: 0};
+    touchesWithMouse: RPTTouch[] = [];
 
-    constructor(voice: RPT_Voice) {
-        this.voice = voice;
+    constructor(tract: RPTTractNode, glottis?: RPTGlottisNode) {
+        this.glottis = glottis;
+        this.tract = tract;
         this.init();
     }
 
@@ -380,7 +267,7 @@ export class TractUI {
             this.noseDiameter[i] = diameter;
         }
 
-        this.voice.tract.port.postMessage({td: newDiameters, d: newDiameters});
+        this.tract.setDiameters(newDiameters);
     }
 
     tongueIndexFromNormalized(i: number = this.tongueIndex) {
@@ -395,127 +282,131 @@ export class TractUI {
 
     draw() {
 
-        if (!this.ctx || !this.voice.diameters) return;
+        if (!this.ctx || !this.tract.diameters || typeof this.tract.velum !== "number") return;
 
-        this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+        this.ctx!.clearRect(0, 0, this.ctx!.canvas.width, this.ctx!.canvas.height);
 
-        this.ctx.lineCap = 'round';        
-        this.ctx.lineJoin = 'round';  
+        this.ctx!.lineCap = 'round';        
+        this.ctx!.lineJoin = 'round';  
         
-        if (this.voice.useConstrictions) this.drawTongueControl();
+        this.drawTongueControl();
         
-        let velum = this.voice.velum;
+        let velum = this.tract.velum;
         let velumAngle = velum * 4;
         
         //first draw fill
-        this.ctx.beginPath();        
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeStyle = this.fillColour;
-        this.ctx.fillStyle = this.fillColour;
+        this.ctx!.beginPath();        
+        this.ctx!.lineWidth = 2;
+        this.ctx!.strokeStyle = this.fillColour;
+        this.ctx!.fillStyle = this.fillColour;
 
         const n = this.n;
 
         this.moveTo(1,0);
 
-        for (let i = 1; i < n; i++) this.lineTo(i, this.voice.diameters[i]);
+        for (let i = 1; i < n; i++) this.lineTo(i, this.tract.diameters[i]);
         for (let i = n - 1; i >= 2; i--) this.lineTo(i, 0);  
 
-        this.ctx.closePath();
-        this.ctx.stroke();
-        this.ctx.fill();
+        this.ctx!.closePath();
+        this.ctx!.stroke();
+        this.ctx!.fill();
         
         //for nose
-        this.ctx.beginPath();        
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeStyle = this.fillColour;
-        this.ctx.fillStyle = this.fillColour;
+        this.ctx!.beginPath();        
+        this.ctx!.lineWidth = 2;
+        this.ctx!.strokeStyle = this.fillColour;
+        this.ctx!.fillStyle = this.fillColour;
         this.moveTo(this.noseStart, -this.noseOffset);
         for (let i = 1; i < this.noseLength; i++) this.lineTo(i+this.noseStart, -this.noseOffset - this.noseDiameter[i]*0.9);
         for (let i = this.noseLength-1; i >= 1; i--) this.lineTo(i+this.noseStart, -this.noseOffset);  
-        this.ctx.closePath();
-        this.ctx.stroke();
-        this.ctx.fill();
+        this.ctx!.closePath();
+        this.ctx!.stroke();
+        this.ctx!.fill();
 
         //velum
-        this.ctx.beginPath();
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeStyle = this.fillColour;
-        this.ctx.fillStyle = this.fillColour;
+        this.ctx!.beginPath();
+        this.ctx!.lineWidth = 2;
+        this.ctx!.strokeStyle = this.fillColour;
+        this.ctx!.fillStyle = this.fillColour;
         this.moveTo(this.noseStart-2, 0);
         this.lineTo(this.noseStart, -this.noseOffset);
         this.lineTo(this.noseStart+velumAngle, -this.noseOffset);
         this.lineTo(this.noseStart+velumAngle-2, 0);
-        this.ctx.closePath();
-        this.ctx.stroke();
-        this.ctx.fill();
+        this.ctx!.closePath();
+        this.ctx!.stroke();
+        this.ctx!.fill();
 
         //white text
-        this.ctx.fillStyle = "white";
-        this.ctx.font="20px Arial";
-        this.ctx.textAlign = "center";
-        this.ctx.globalAlpha = 1.0;
+        this.ctx!.fillStyle = "white";
+        this.ctx!.font="20px Arial";
+        this.ctx!.textAlign = "center";
+        this.ctx!.globalAlpha = 1.0;
         this.drawText(n * 0.10, 0.425, "throat");         
         this.drawText(n * 0.71, -1.8, "nasal");
         this.drawText(n * 0.71, -1.3, "cavity");
-        this.ctx.font="22px Arial";        
+        this.ctx!.font="22px Arial";        
         this.drawText(n * 0.64, 1.1, "oral");    
         this.drawText(n * 0.74, 1.1, "cavity"); 
 
         this.drawAmplitudes(); 
 
         //then draw lines
-        this.ctx.beginPath();        
-        this.ctx.lineWidth = 5;
-        this.ctx.strokeStyle = this.lineColour;
-        this.ctx.lineJoin = 'round';
-        this.ctx.lineCap = 'round';          
-        this.moveTo(1, this.voice.diameters[0]);
-        for (let i = 2; i < n; i++) this.lineTo(i, this.voice.diameters[i]);
+        this.ctx!.beginPath();        
+        this.ctx!.lineWidth = 5;
+        this.ctx!.strokeStyle = this.lineColour;
+        this.ctx!.lineJoin = 'round';
+        this.ctx!.lineCap = 'round';          
+        this.moveTo(1, this.tract.diameters[0]);
+        for (let i = 2; i < n; i++) this.lineTo(i, this.tract.diameters[i]);
         this.moveTo(1,0);
         for (let i = 2; i <= this.noseStart-2; i++) this.lineTo(i, 0);
         this.moveTo(this.noseStart+velumAngle-2,0);
         for (let i = this.noseStart+Math.ceil(velumAngle)-2; i < n; i++) this.lineTo(i, 0);   
-        this.ctx.stroke();
+        this.ctx!.stroke();
 
         //for nose
-        this.ctx.beginPath();        
-        this.ctx.lineWidth = 5;
-        this.ctx.strokeStyle = this.lineColour;
-        this.ctx.lineJoin = 'round';  
+        this.ctx!.beginPath();        
+        this.ctx!.lineWidth = 5;
+        this.ctx!.strokeStyle = this.lineColour;
+        this.ctx!.lineJoin = 'round';  
         this.moveTo(this.noseStart, -this.noseOffset);
         for (let i = 1; i < this.noseLength; i++) this.lineTo(i+this.noseStart, -this.noseOffset - this.noseDiameter[i]*0.9);
         this.moveTo(this.noseStart+velumAngle, -this.noseOffset);
         for (let i = Math.ceil(velumAngle); i < this.noseLength; i++) this.lineTo(i+this.noseStart, -this.noseOffset);
-        this.ctx.stroke();
+        this.ctx!.stroke();
                 
         //velum
-        this.ctx.globalAlpha = velum*5;
-        this.ctx.beginPath();
+        this.ctx!.globalAlpha = velum*5;
+        this.ctx!.beginPath();
         this.moveTo(this.noseStart-2, 0);
         this.lineTo(this.noseStart, -this.noseOffset);
         this.moveTo(this.noseStart+velumAngle-2, 0);
         this.lineTo(this.noseStart+velumAngle, -this.noseOffset);  
-        this.ctx.stroke();
+        this.ctx!.stroke();
         
-        this.ctx.fillStyle = "orchid";
-        this.ctx.font="20px Arial";
-        this.ctx.textAlign = "center";
-        this.ctx.globalAlpha = 0.7;
-        this.drawText(n*0.93, 0.8+0.8*this.voice.diameters[n-1], " lip"); 
+        this.ctx!.fillStyle = "orchid";
+        this.ctx!.font="20px Arial";
+        this.ctx!.textAlign = "center";
+        this.ctx!.globalAlpha = 0.7;
+        this.drawText(n*0.93, 0.8+0.8*this.tract.diameters[n-1], " lip"); 
 
+        this.drawCircle(this.tract.constrictionIndex.value * this.n, this.tract.constrictionDiameter.value, 10)
         this.drawBackground();
+        this.drawKeyboard();
+        this.drawPitchControl();
         this.drawPositions();
+
     }
 
     drawText(i: number, d: number, text: string) {
         if (!this.ctx) return;
         let angle = this.angleOffset + i * this.angleScale * Math.PI / (this.lipStart-1);
         let r = this.radius - this.scale*d; 
-        this.ctx.save();
-        this.ctx.translate(this.originX-r*Math.cos(angle), this.originY-r*Math.sin(angle)+2); //+8);
-        this.ctx.rotate(angle-Math.PI/2);
-        this.ctx.fillText(text, 0, 0);
-        this.ctx.restore();
+        this.ctx!.save();
+        this.ctx!.translate(this.originX-r*Math.cos(angle), this.originY-r*Math.sin(angle)+2); //+8);
+        this.ctx!.rotate(angle-Math.PI/2);
+        this.ctx!.fillText(text, 0, 0);
+        this.ctx!.restore();
     }
 
     moveTo(i: number, d: number) {
@@ -528,7 +419,7 @@ export class TractUI {
         let r = this.radius - this.scale*d + 100*wobble;
         let x = this.originX-r*Math.cos(angle);
         let y = this.originY-r*Math.sin(angle);
-        this.ctx.moveTo(x, y);
+        this.ctx!.moveTo(x, y);
     }
     
     lineTo(i: number, d: number) {
@@ -538,67 +429,67 @@ export class TractUI {
         let r = this.radius - this.scale*d + 100*wobble;
         let x = this.originX-r*Math.cos(angle);
         let y = this.originY-r*Math.sin(angle);
-        this.ctx.lineTo(x, y);
+        this.ctx!.lineTo(x, y);
     }
 
     drawCircle(i: number, d: number, radius: number) {
         if (!this.ctx) return;
         let angle = this.angleOffset + i * this.angleScale * Math.PI / (this.lipStart-1);
         let r = this.radius - this.scale*d; 
-        this.ctx.beginPath();
-        this.ctx.arc(this.originX-r*Math.cos(angle), this.originY-r*Math.sin(angle), radius, 0, 2*Math.PI);
-        this.ctx.fill();
+        this.ctx!.beginPath();
+        this.ctx!.arc(this.originX-r*Math.cos(angle), this.originY-r*Math.sin(angle), radius, 0, 2*Math.PI);
+        this.ctx!.fill();
     }
 
     drawAmplitudes() {
         if (!this.ctx) return;
-        this.ctx.strokeStyle = "orchid";
-        this.ctx.lineCap = "butt";
-        this.ctx.globalAlpha = 0.3;
+        this.ctx!.strokeStyle = "orchid";
+        this.ctx!.lineCap = "butt";
+        this.ctx!.globalAlpha = 0.3;
 
         const n = this.n;
         for (let i = 2; i < n-1; i++) {
-            this.ctx.beginPath();
-            this.ctx.lineWidth = 1; //Math.sqrt(Tract.maxAmplitude[i])*3;
+            this.ctx!.beginPath();
+            this.ctx!.lineWidth = 1; //Math.sqrt(Tract.maxAmplitude[i])*3;
             this.moveTo(i, 0);
-            this.lineTo(i, this.voice.diameters![i]);
-            this.ctx.stroke();
+            this.lineTo(i, this.tract.diameters![i]);
+            this.ctx!.stroke();
         }
         for (let i=1; i<this.noseLength-1; i++) {
-            this.ctx.beginPath();
-            this.ctx.lineWidth = 1; //Math.sqrt(Tract.noseMaxAmplitude[i]) * 3;
+            this.ctx!.beginPath();
+            this.ctx!.lineWidth = 1; //Math.sqrt(Tract.noseMaxAmplitude[i]) * 3;
             this.moveTo(i+this.noseStart, -this.noseOffset);
             this.lineTo(i+this.noseStart, -this.noseOffset - this.noseDiameter[i]*0.9);
-            this.ctx.stroke();
+            this.ctx!.stroke();
         }
-        this.ctx.globalAlpha = 1;
+        this.ctx!.globalAlpha = 1;
     }
 
     drawTongueControl() {
         if (!this.ctx) return;
 
-        this.ctx.lineCap = "round";
-        this.ctx.lineJoin = "round";
-        this.ctx.strokeStyle = "#ffeef5"; //pale pink
-        this.ctx.fillStyle = "#ffeef5";
-        this.ctx.globalAlpha = 1.0;
-        this.ctx.beginPath();
-        this.ctx.lineWidth = 45;
+        this.ctx!.lineCap = "round";
+        this.ctx!.lineJoin = "round";
+        this.ctx!.strokeStyle = "#ffeef5"; //pale pink
+        this.ctx!.fillStyle = "#ffeef5";
+        this.ctx!.globalAlpha = 1.0;
+        this.ctx!.beginPath();
+        this.ctx!.lineWidth = 45;
         
         //outline
         this.moveTo(this.tongueLowerIndexBound, this.innerTongueControlRadius);
         for (let i=this.tongueLowerIndexBound+1; i<=this.tongueUpperIndexBound; i++) this.lineTo(i, this.innerTongueControlRadius);
         this.lineTo(this.tongueIndexCentre, this.outerTongueControlRadius);
-        this.ctx.closePath();
-        this.ctx.stroke();
-        this.ctx.fill();
+        this.ctx!.closePath();
+        this.ctx!.stroke();
+        this.ctx!.fill();
         
         let a = this.innerTongueControlRadius;
         let c = this.outerTongueControlRadius;
         let b = 0.5*(a+c);
         let r = 3;
-        this.ctx.fillStyle = "orchid";
-        this.ctx.globalAlpha = 0.3;        
+        this.ctx!.fillStyle = "orchid";
+        this.ctx!.globalAlpha = 0.3;        
         this.drawCircle(this.tongueIndexCentre, a, r);
         this.drawCircle(this.tongueIndexCentre-4.25, a, r);
         this.drawCircle(this.tongueIndexCentre-8.5, a, r);
@@ -609,7 +500,7 @@ export class TractUI {
         this.drawCircle(this.tongueIndexCentre, b, r);  
         this.drawCircle(this.tongueIndexCentre, c, r);
         
-        this.ctx.globalAlpha = 1.0;         
+        this.ctx!.globalAlpha = 1.0;         
 
         //circle for tongue position
         let angle = this.angleOffset + this.tongueIndexFromNormalized() 
@@ -617,17 +508,120 @@ export class TractUI {
         r = this.radius - this.scale*(this.tongueDiameter);
         let x = this.originX-r*Math.cos(angle);
         let y = this.originY-r*Math.sin(angle);
-        this.ctx.lineWidth = 4;
-        this.ctx.strokeStyle = "orchid";
-        this.ctx.globalAlpha = 0.7;
-        this.ctx.beginPath();
-        this.ctx.arc(x,y, 18, 0, 2*Math.PI);
-        this.ctx.stroke();        
-        this.ctx.globalAlpha = 0.15;
-        this.ctx.fill();
-        this.ctx.globalAlpha = 1.0;
+        this.ctx!.lineWidth = 4;
+        this.ctx!.strokeStyle = "orchid";
+        this.ctx!.globalAlpha = 0.7;
+        this.ctx!.beginPath();
+        this.ctx!.arc(x,y, 18, 0, 2*Math.PI);
+        this.ctx!.stroke();        
+        this.ctx!.globalAlpha = 0.15;
+        this.ctx!.fill();
+        this.ctx!.globalAlpha = 1.0;
         
-        this.ctx.fillStyle = "orchid";
+        this.ctx!.fillStyle = "orchid";
+    }
+
+    drawPitchControl() {
+        const w=9;
+        const h=15;
+        this.ctx!.lineWidth = 4;
+        this.ctx!.strokeStyle = "orchid";
+        this.ctx!.globalAlpha = 0.7;
+        this.ctx!.beginPath();
+        this.ctx!.moveTo(this.glottisX - w, this.glottisY - h + 100);
+        this.ctx!.lineTo(this.glottisX + w, this.glottisY - h + 100);
+        this.ctx!.lineTo(this.glottisX + w, this.glottisY + h + 100);
+        this.ctx!.lineTo(this.glottisX - w, this.glottisY + h + 100);                    
+        this.ctx!.closePath();            
+        this.ctx!.stroke();    
+        this.ctx!.globalAlpha = 0.15;
+        this.ctx!.fill();            
+        this.ctx!.globalAlpha = 1.0;
+    }
+
+    drawKeyboard() {      
+        this.ctx!.strokeStyle = palePink;
+        this.ctx!.fillStyle = palePink;        
+        this.ctx!.globalAlpha = 1.0;     
+        this.ctx!.lineCap = 'round';        
+        this.ctx!.lineJoin = 'round';        
+            
+        this.drawBar(0.0, 0.4, 8);
+        this.ctx!.globalAlpha = 0.7;         
+        this.drawBar(0.52, 0.72, 8);
+        
+        this.ctx!.strokeStyle = "orchid";   
+        this.ctx!.fillStyle = "orchid";
+        for (let i=0; i< this.semitones; i++) {
+            const keyWidth = this.keyboardWidth/this.semitones;
+            const x = this.keyboardLeft+(i+1/2)*keyWidth;
+            const y = this.keyboardTop;
+            if (this.marks[(i+3)%12]==1) {
+                this.ctx!.lineWidth = 4;
+                this.ctx!.globalAlpha = 0.4;  
+            }
+            else {
+                this.ctx!.lineWidth = 3;
+                this.ctx!.globalAlpha = 0.2;  
+            }
+            this.ctx!.beginPath();
+            this.ctx!.moveTo(x,y+9);
+            this.ctx!.lineTo(x, y+this.keyboardHeight*0.4-9);
+            this.ctx!.stroke();
+            
+            this.ctx!.lineWidth = 3;
+            this.ctx!.globalAlpha = 0.15;   
+            
+            this.ctx!.beginPath();
+            this.ctx!.moveTo(x,y+this.keyboardHeight*0.52+6);
+            this.ctx!.lineTo(x, y+this.keyboardHeight*0.72-6);
+            this.ctx!.stroke();  
+          
+        }
+        
+        this.ctx!.fillStyle = "orchid";
+        this.ctx!.font="17px Arial";
+        this.ctx!.textAlign = "center";
+        this.ctx!.globalAlpha = 0.7; 
+        this.ctx!.fillText("voicebox control", 300, 490 + 100); //+100 to move above keyboard
+        this.ctx!.fillText("pitch", 300, 592 + 100);
+        this.ctx!.globalAlpha = 0.3; 
+        this.ctx!.strokeStyle = "orchid";
+        this.ctx!.fillStyle = "orchid";  
+        this.ctx!.save()
+        this.ctx!.translate(410, 587 + 100);
+        this.drawArrow(80, 2, 10);
+        this.ctx!.translate(-220, 0);
+        this.ctx!.rotate(Math.PI);
+        this.drawArrow(80, 2, 10);
+        this.ctx!.restore(); 
+        this.ctx!.globalAlpha=1.0;        
+    }
+
+    drawBar(topFactor: number, bottomFactor: number, radius: number) {
+        this.ctx!.lineWidth = radius*2; 
+        this.ctx!.beginPath();
+        this.ctx!.moveTo(this.keyboardLeft+radius, this.keyboardTop+topFactor*this.keyboardHeight+radius);
+        this.ctx!.lineTo(this.keyboardLeft+this.keyboardWidth-radius, this.keyboardTop+topFactor*this.keyboardHeight+radius);
+        this.ctx!.lineTo(this.keyboardLeft+this.keyboardWidth-radius, this.keyboardTop+bottomFactor*this.keyboardHeight-radius);
+        this.ctx!.lineTo(this.keyboardLeft+radius, this.keyboardTop+bottomFactor*this.keyboardHeight-radius);
+        this.ctx!.closePath();
+        this.ctx!.stroke();
+        this.ctx!.fill();
+    }
+
+    drawArrow(l: number, ahw: number, ahl: number) {
+        this.ctx!.lineWidth = 2;
+        this.ctx!.beginPath();
+        this.ctx!.moveTo(-l, 0);
+        this.ctx!.lineTo(0,0);
+        this.ctx!.lineTo(0, -ahw);
+        this.ctx!.lineTo(ahl, 0);
+        this.ctx!.lineTo(0, ahw);
+        this.ctx!.lineTo(0,0);
+        this.ctx!.closePath();
+        this.ctx!.stroke();
+        this.ctx!.fill();
     }
 
     drawBackground() {
@@ -636,32 +630,31 @@ export class TractUI {
         const n = this.n;
         
         //text
-        this.ctx.fillStyle = "black";
-        this.ctx.font="20px Arial";
-        this.ctx.textAlign = "center";
-        this.ctx.globalAlpha = 0.7;
+        this.ctx!.fillStyle = "black";
+        this.ctx!.font="20px Arial";
+        this.ctx!.textAlign = "center";
+        this.ctx!.globalAlpha = 0.7;
         this.drawText(n * 0.44, -0.28, "soft");
         this.drawText(n * 0.51, -0.28, "palate");
         this.drawText(n * 0.77, -0.28, "hard");
         this.drawText(n * 0.84, -0.28, "palate");
         this.drawText(n * 0.95, -0.28, " lip");
         
-        this.ctx.font="17px Arial";        
-        if (this.voice.useConstrictions) this.drawTextStraight(n * 0.18, 3, "  tongue control");   
-        this.ctx.textAlign = "left";
+        this.ctx!.font="17px Arial";        
+        this.drawTextStraight(n * 0.18, 3, "  tongue control");   
+        this.ctx!.textAlign = "left";
         this.drawText(n * 1.03, -1.07, "nasals");
         this.drawText(n * 1.03, -0.28, "stops");
         this.drawText(n * 1.03, 0.51, "fricatives");
-        //this.drawTextStraight(1.5, +0.8, "glottis")
-        this.ctx.strokeStyle = "orchid";
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
+        this.drawTextStraight(1.5, +0.8, "glottis")
+        this.ctx!.strokeStyle = "orchid";
+        this.ctx!.lineWidth = 2;
+        this.ctx!.beginPath();
         this.moveTo(n * 1.03, 0); this.lineTo(n * 1.07, 0); 
         this.moveTo(n * 1.03, -this.noseOffset); this.lineTo(n * 1.07,  -this.noseOffset); 
-        this.ctx.stroke();
-        this.ctx.globalAlpha = 0.9;
-        this.ctx.globalAlpha = 1.0;
-        // this.ctx = tractCtx;
+        this.ctx!.stroke();
+        this.ctx!.globalAlpha = 0.9;
+        this.ctx!.globalAlpha = 1.0;
     }
 
     drawTextStraight(i: number, d: number, text: string)
@@ -670,10 +663,10 @@ export class TractUI {
 
         let angle = this.angleOffset + i * this.angleScale * Math.PI / (this.lipStart-1);
         let r = this.radius - this.scale*d; 
-        this.ctx.save();
-        this.ctx.translate(this.originX-r*Math.cos(angle), this.originY-r*Math.sin(angle)+2); //+8);
-        this.ctx.fillText(text, 0, 0);
-        this.ctx.restore();
+        this.ctx!.save();
+        this.ctx!.translate(this.originX-r*Math.cos(angle), this.originY-r*Math.sin(angle)+2); //+8);
+        this.ctx!.fillText(text, 0, 0);
+        this.ctx!.restore();
     }
 
     drawPositions() {
@@ -681,33 +674,30 @@ export class TractUI {
 
         const n = this.n;
 
-        this.ctx.fillStyle = "orchid";
-        this.ctx.font="24px Arial";
-        this.ctx.textAlign = "center";
-        this.ctx.globalAlpha = 0.6;
+        this.ctx!.fillStyle = "orchid";
+        this.ctx!.font="24px Arial";
+        this.ctx!.textAlign = "center";
+        this.ctx!.globalAlpha = 0.6;
         let a = 2;
         let b = 1.5;
 
-        if (this.voice.useConstrictions) {
-
-            this.drawText(15/44 * n, a+b*0.60, 'æ'); //pat
-            this.drawText(13/44 * n, a+b*0.27, 'ɑ'); //part
-            this.drawText(12/44 * n, a+b*0.00, 'ɒ'); //pot
-            this.drawText(17.7/44 * n, a+b*0.05, '(ɔ)'); //port (rounded)
-            this.drawText(27/44 * n, a+b*0.65, 'ɪ'); //pit
-            this.drawText(27.4/44 * n, a+b*0.21, 'i'); //peat
-            this.drawText(20/44 * n, a+b*1.00, 'e'); //pet
-            this.drawText(18.1/44 * n, a+b*0.37, 'ʌ'); //putt   
-            //put ʊ
-            this.drawText(23/44 * n, a+b*0.1, '(u)'); //poot (rounded)   
-            this.drawText(21/44 * n, a+b*0.6, 'ə'); //pert [should be ɜ]
-        }
+        this.drawText(15/44 * n, a+b*0.60, 'æ'); //pat
+        this.drawText(13/44 * n, a+b*0.27, 'ɑ'); //part
+        this.drawText(12/44 * n, a+b*0.00, 'ɒ'); //pot
+        this.drawText(17.7/44 * n, a+b*0.05, '(ɔ)'); //port (rounded)
+        this.drawText(27/44 * n, a+b*0.65, 'ɪ'); //pit
+        this.drawText(27.4/44 * n, a+b*0.21, 'i'); //peat
+        this.drawText(20/44 * n, a+b*1.00, 'e'); //pet
+        this.drawText(18.1/44 * n, a+b*0.37, 'ʌ'); //putt   
+        //put ʊ
+        this.drawText(23/44 * n, a+b*0.1, '(u)'); //poot (rounded)   
+        this.drawText(21/44 * n, a+b*0.6, 'ə'); //pert [should be ɜ]
         
         let nasals = -1.1;
         let stops = -0.4;
         let fricatives = 0.5;
         let approximants = 0.9;
-        this.ctx.globalAlpha = 0.8;
+        this.ctx!.globalAlpha = 0.8;
         
         //approximants
         this.drawText(38/44 * n, approximants, 'L');
@@ -743,12 +733,12 @@ export class TractUI {
         return (this.radius-Math.sqrt(xx*xx + yy*yy))/this.scale;
     }
 
-    startMouse = (event: MouseEvent) => {
+    startMouse = (event: React.MouseEvent) => {
         event.preventDefault();
         const {width, height} = this.cnv!.getBoundingClientRect();
         const x = event.nativeEvent.offsetX/width *this.cnv!.width;
         const y = event.nativeEvent.offsetY/height*this.cnv!.height;
-        let touch: TractTouch = {
+        let touch: RPTTouch = {
             x, y, alive: true,
             index: this.getIndex(x, y),
             diameter: this.getDiameter(x, y)
@@ -758,6 +748,7 @@ export class TractUI {
             touch.diameter >= this.innerTongueControlRadius - 0.5 && 
             touch.diameter <= this.outerTongueControlRadius + 0.5
         ) this.tongueTouch = touch;
+        if (touch.y > 550) this.keyboardTouch = touch;
         this.mouseTouch = touch;
         this.touchesWithMouse.push(touch);   
         this.handleTouches();
@@ -770,7 +761,7 @@ export class TractUI {
         this.handleTouches();
     }
 
-    moveMouse = (event: MouseEvent) => {
+    moveMouse = (event: React.MouseEvent) => {
         event.preventDefault();
         const {width, height} = this.cnv!.getBoundingClientRect();
         let touch = this.mouseTouch;
@@ -784,13 +775,24 @@ export class TractUI {
 
     handleTouches() {
 
-        if (!this.voice.useConstrictions) return;
-
-        let index, diameter;
-
         if (this.tongueTouch && !this.tongueTouch.alive) this.tongueTouch = undefined;
+        if (this.keyboardTouch && !this.keyboardTouch.alive) this.keyboardTouch = undefined;
 
-        if (this.tongueTouch && this.voice.useConstrictions) {
+        if (this.glottis && this.keyboardTouch) { //keyboard is touched
+            const touch = this.keyboardTouch;
+            const local_y = constrain(touch.y - this.keyboardTop-10, 0, this.keyboardHeight-26);
+            const local_x = touch.x - this.keyboardLeft;
+            const semitone = this.semitones * local_x / this.keyboardWidth + 0.5;
+            this.glottis.frequency.value = this.baseNote * Math.pow(2, semitone/12);
+            // if (this.glottis.intensity.value == 0) Glottis.smoothFrequency = Glottis.UIFrequency;
+            const t = constrain(1-local_y / (this.keyboardHeight-28), 0, 1);
+            this.glottis.tenseness.value = 1 - Math.cos(t*Math.PI*0.5);
+            this.glottisX = touch.x;
+            this.glottisY = local_y + this.keyboardTop+10 - 100;
+            return;
+        }
+
+        if (this.tongueTouch) {
             let {index, diameter} = this.tongueTouch;      
             let fromPoint = (this.outerTongueControlRadius-diameter)/(this.outerTongueControlRadius-this.innerTongueControlRadius);
             fromPoint = constrain(fromPoint, 0, 1);
@@ -799,32 +801,31 @@ export class TractUI {
             let tongueIndex = constrain(index, this.tongueLowerIndexBound, this.tongueUpperIndexBound);
             let out = fromPoint*0.5*(this.tongueUpperIndexBound-this.tongueLowerIndexBound);
             tongueIndex = constrain(index, this.tongueIndexCentre-out, this.tongueIndexCentre+out);
-
-            this.voice.tongue.index.value = this.normalizedTongueIndex(tongueIndex);
-            this.voice.tongue.diameter.value = tongueDiameter;
+            this.tract.tongueIndex.value = this.normalizedTongueIndex(tongueIndex);
+            this.tract.tongueDiameter.value = tongueDiameter;
         }
 
-        this.voice.velumTarget.value = 0.01
 
+        this.tract.velumTarget.value = 0.01
+        let index, diameter;
         for (let j=0; j<this.touchesWithMouse.length; j++) {
             let touch = this.touchesWithMouse[j];
-            if (!touch.alive) continue;            
+            if (!touch.alive) continue;  
             index = touch.index;
             diameter = touch.diameter;
-
             if (index > this.noseStart && diameter < -this.noseOffset)     
-                this.voice.velumTarget.value = 0.4;      
+                this.tract.velumTarget.value = 0.4;      
             if (diameter < -0.85-this.noseOffset) continue;
             diameter -= 0.3;
-            if (diameter < 0) diameter = 0;   
+            if (diameter < 0) diameter = 0;  
         }
 
-        this.voice.constriction.index.value = index ? index/this.n : 0;
-        this.voice.constriction.diameter!.value = diameter || 0;
-        this.voice.fricativeIntensity!.value = 1;
+        this.tract.constrictionIndex.value = index ? index/this.n : 0;
+        this.tract.constrictionDiameter!.value = diameter || 0;
+        // this.voice.fricativeIntensity!.value = 1;
     }
 }
 
-function constrain(n: number, low: number, high: number): number {
+export function constrain(n: number, low: number, high: number): number {
     return Math.max(Math.min(n, high), low);
 };
