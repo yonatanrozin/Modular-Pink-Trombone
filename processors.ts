@@ -241,6 +241,12 @@ class TractProcessor extends AudioWorkletProcessor {
                 minValue: 0.01,
                 maxValue: 0.4,
                 automationRate: "a-rate"
+            },
+            {
+                name: "movement-speed",
+                defaultValue: 15,
+                minValue: 0,
+                automationRate: "k-rate"
             }
         ]
     }
@@ -260,7 +266,7 @@ class TractProcessor extends AudioWorkletProcessor {
     movementSpeed = 15;
 
     blockTime = 128 / sampleRate; 
-    newDiameter!: Float64Array;
+    // newDiameter!: Float64Array;
     R!: Float64Array;
     L!: Float64Array;
     reflection!: Float64Array;
@@ -268,7 +274,7 @@ class TractProcessor extends AudioWorkletProcessor {
     junctionOutputR!: Float64Array;
     junctionOutputL!: Float64Array;
     A!: Float64Array;
-    maxAmplitude!: Float64Array;
+    // maxAmplitude!: Float64Array;
     bladeStart!: number;
     tipStart!: number;
     lipStart!: number;
@@ -283,7 +289,7 @@ class TractProcessor extends AudioWorkletProcessor {
     noseReflection!: Float64Array;
     noseDiameter!: Float64Array;
     noseA!: Float64Array;
-    noseMaxAmplitude!: Float64Array;
+    // noseMaxAmplitude!: Float64Array;
     reflectionLeft!: number;
     reflectionRight!: number;
     reflectionNose!: number;
@@ -294,8 +300,6 @@ class TractProcessor extends AudioWorkletProcessor {
     lipReflection = -0.85;
     lipOutput = 0;
     noseOutput = 0;
-    noseOffset = 0.8;
-    fade = 1;
     lastObstruction = -1;
     transients: Transient[] = [];
     intensity = 1;
@@ -320,7 +324,7 @@ class TractProcessor extends AudioWorkletProcessor {
         this.diameter = new Float64Array(this.n);
         this.restDiameter = new Float64Array(this.n);
         this.targetDiameter = new Float64Array(this.n);
-        this.newDiameter = new Float64Array(this.n);
+        // this.newDiameter = new Float64Array(this.n);
         this.getRestDiameters();
 
         this.R = new Float64Array(this.n);
@@ -330,7 +334,7 @@ class TractProcessor extends AudioWorkletProcessor {
         this.junctionOutputR = new Float64Array(this.n+1);
         this.junctionOutputL = new Float64Array(this.n+1);
         this.A =new Float64Array(this.n);
-        this.maxAmplitude = new Float64Array(this.n);
+        // this.maxAmplitude = new Float64Array(this.n);
         
         this.noseLength = Math.floor(28*this.n/44)
         this.noseStart = this.n-this.noseLength + 1;
@@ -341,7 +345,7 @@ class TractProcessor extends AudioWorkletProcessor {
         this.noseReflection = new Float64Array(this.noseLength+1);
         this.noseDiameter = new Float64Array(this.noseLength);
         this.noseA = new Float64Array(this.noseLength);
-        this.noseMaxAmplitude = new Float64Array(this.noseLength);
+        // this.noseMaxAmplitude = new Float64Array(this.noseLength);
         for (let i = 0; i < this.noseLength; i++) {
             let d = 2 * (i/this.noseLength);
             let diameter;
@@ -364,7 +368,7 @@ class TractProcessor extends AudioWorkletProcessor {
             if (i<7*this.n/44-0.5) diameter = 0.6;
             else if (i<12*this.n/44) diameter = 1.1;
             else diameter = 1.5;
-            this.diameter[i] = this.restDiameter[i] = this.targetDiameter[i] = this.newDiameter[i] = diameter;
+            this.diameter[i] = this.restDiameter[i] = this.targetDiameter[i] = /* this.newDiameter[i] = */ diameter;
         }
     }
 
@@ -499,9 +503,7 @@ class TractProcessor extends AudioWorkletProcessor {
         this.noseA[0] = this.noseDiameter[0]*this.noseDiameter[0];        
     }
 
-    runStep(glottalOutput: number, turbulenceNoise: number, lambda: number, noiseModulator: number) {
-        const updateAmplitudes = (Math.random()<0.1);
-    
+    runStep(glottalOutput: number, turbulenceNoise: number, lambda: number, noiseModulator: number) {    
         //mouth
         this.processTransients();
         this.addTurbulenceNoise(turbulenceNoise, noiseModulator);
@@ -529,11 +531,11 @@ class TractProcessor extends AudioWorkletProcessor {
         for (let i = 0; i < this.n; i++) {          
             this.R[i] = this.junctionOutputR[i]*0.999;
             this.L[i] = this.junctionOutputL[i+1]*0.999;   
-            if (updateAmplitudes) {   
-                const amplitude = Math.abs(this.R[i]+this.L[i]);
-                if (amplitude > this.maxAmplitude[i]) this.maxAmplitude[i] = amplitude;
-                else this.maxAmplitude[i] *= 0.999;
-            }
+            // if (updateAmplitudes) {   
+            //     const amplitude = Math.abs(this.R[i]+this.L[i]);
+            //     if (amplitude > this.maxAmplitude[i]) this.maxAmplitude[i] = amplitude;
+            //     else this.maxAmplitude[i] *= 0.999;
+            // }
         }
 
         this.lipOutput = this.R[this.n-1];
@@ -548,18 +550,19 @@ class TractProcessor extends AudioWorkletProcessor {
         }
         
         for (let i = 0; i < this.noseLength; i++) {
-            this.noseR[i] = this.noseJunctionOutputR[i] * this.fade;
-            this.noseL[i] = this.noseJunctionOutputL[i+1] * this.fade;   
+            this.noseR[i] = this.noseJunctionOutputR[i];
+            this.noseL[i] = this.noseJunctionOutputL[i+1];   
             
-            //this.noseR[i] = Math.clamp(this.noseJunctionOutputR[i] * this.fade, -1, 1);
-            //this.noseL[i] = Math.clamp(this.noseJunctionOutputL[i+1] * this.fade, -1, 1);    
+            //commented out in original:
+            // this.noseR[i] = Math.clamp(this.noseJunctionOutputR[i] * this.fade, -1, 1);
+            // this.noseL[i] = Math.clamp(this.noseJunctionOutputL[i+1] * this.fade, -1, 1);    
             
-            if (updateAmplitudes)
-            {
-                const amplitude = Math.abs(this.noseR[i]+this.noseL[i]);
-                if (amplitude > this.noseMaxAmplitude[i]) this.noseMaxAmplitude[i] = amplitude;
-                else this.noseMaxAmplitude[i] *= 0.999;
-            }
+            // if (updateAmplitudes)
+            // {
+            //     const amplitude = Math.abs(this.noseR[i]+this.noseL[i]);
+            //     if (amplitude > this.noseMaxAmplitude[i]) this.noseMaxAmplitude[i] = amplitude;
+            //     else this.noseMaxAmplitude[i] *= 0.999;
+            // }
         }
 
         this.noseOutput = this.noseR[this.noseLength-1];
@@ -585,6 +588,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
         const newN = Math.floor(parameters["n"][0]);
         if (newN != this.n) this.init(newN);
+        this.movementSpeed = parameters["movement-speed"][0];
 
         for (let i = 0; i < voiceOut.length; i++) {
             this.tongueIndex = parameters["tongue-index"][i] * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)

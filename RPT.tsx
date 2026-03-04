@@ -12,6 +12,8 @@ export type RPTTractMessageData = {
 
 export default class RPT {
 
+    audioContext: AudioContext;
+
     private whiteNoise: AudioBufferSourceNode;
     private aspirationFilter: BiquadFilterNode;
     private fricativeFilter: BiquadFilterNode;
@@ -32,12 +34,14 @@ export default class RPT {
     get constrictionIndex() { return this.tract.constrictionIndex; }
     get constrictionDiameter() { return this.tract.constrictionDiameter; }
     get velumTarget() { return this.tract.velumTarget; }
+    get movementSpeed() { return this.tract.movementSpeed; }
 
     get gain() { return this.gainNode.gain; }
     get diameters() { return this.tract.diameters; }
     get velum() { return this.tract.velum; }
     
     constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
+        this.audioContext = ctx;
         this.whiteNoise = this.getWhiteNoiseSource(ctx);
         this.aspirationFilter = this.getAspirationFilter(ctx);
         this.fricativeFilter = this.getFricativeFilter(ctx);
@@ -133,6 +137,7 @@ export class RPTTractNode extends AudioWorkletNode {
     get constrictionIndex() { return this.parameters.get("constriction-index")! }
     get constrictionDiameter() { return this.parameters.get("constriction-diameter")! }
     get velumTarget() { return this.parameters.get("velum-target")! }
+    get movementSpeed() { return this.parameters.get("movement-speed")! }
 
     constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
         super(ctx, "tract-processor", {
@@ -207,8 +212,6 @@ export class RPTTractUI {
     fillColour = 'pink';
     lineColour = '#C070C6';
 
-    glottisX = 240;
-    glottisY = 530;
     keyboardTop = 600;
     keyboardLeft = 0;
     keyboardWidth = 600;
@@ -395,7 +398,6 @@ export class RPTTractUI {
         this.drawKeyboard();
         this.drawPitchControl();
         this.drawPositions();
-
     }
 
     drawText(i: number, d: number, text: string) {
@@ -522,16 +524,24 @@ export class RPTTractUI {
     }
 
     drawPitchControl() {
+        if (!this.glottis) return;
         const w=9;
         const h=15;
+        
+        //inversion of setting UIFrequency, UITenseness, Glottis.x and Glottis.y from keyboard touch location
+        const semitone = 12 * Math.log2(this.glottis.frequency.value / this.baseNote);
+        const x = (semitone - 0.5) * this.keyboardWidth / this.semitones + this.keyboardLeft;
+        const t = Math.acos(1 - this.glottis.tenseness.value) / (Math.PI * 0.5);
+        const y = (1 - t) * (this.keyboardHeight - 28) + this.keyboardTop + 10 - 100;
+
         this.ctx!.lineWidth = 4;
         this.ctx!.strokeStyle = "orchid";
         this.ctx!.globalAlpha = 0.7;
         this.ctx!.beginPath();
-        this.ctx!.moveTo(this.glottisX - w, this.glottisY - h + 100);
-        this.ctx!.lineTo(this.glottisX + w, this.glottisY - h + 100);
-        this.ctx!.lineTo(this.glottisX + w, this.glottisY + h + 100);
-        this.ctx!.lineTo(this.glottisX - w, this.glottisY + h + 100);                    
+        this.ctx!.moveTo(x - w, y - h + 100);
+        this.ctx!.lineTo(x + w, y - h + 100);
+        this.ctx!.lineTo(x + w, y + h + 100);
+        this.ctx!.lineTo(x - w, y + h + 100);                    
         this.ctx!.closePath();            
         this.ctx!.stroke();    
         this.ctx!.globalAlpha = 0.15;
@@ -784,11 +794,10 @@ export class RPTTractUI {
             const local_x = touch.x - this.keyboardLeft;
             const semitone = this.semitones * local_x / this.keyboardWidth + 0.5;
             this.glottis.frequency.value = this.baseNote * Math.pow(2, semitone/12);
-            // if (this.glottis.intensity.value == 0) Glottis.smoothFrequency = Glottis.UIFrequency;
             const t = constrain(1-local_y / (this.keyboardHeight-28), 0, 1);
             this.glottis.tenseness.value = 1 - Math.cos(t*Math.PI*0.5);
-            this.glottisX = touch.x;
-            this.glottisY = local_y + this.keyboardTop+10 - 100;
+            // x = touch.x;
+            // y = local_y + this.keyboardTop+10 - 100;
             return;
         }
 
