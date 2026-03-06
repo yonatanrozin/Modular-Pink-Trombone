@@ -1,3 +1,4 @@
+import { linear } from "everpolate";
 import Noise from "./noise.ts";
 // import { constrain, RPTTractMessageData } from "./RPT2";
 
@@ -309,7 +310,16 @@ class TractProcessor extends AudioWorkletProcessor {
         this.init();
         this.port.start();
         this.port.postMessage({diameters: this.diameter, velum: this.noseDiameter[0]});
-        this.port.onmessage = ({data}) => { if (data.diameters) this.restDiameter.set(data.diameters); }
+        this.port.onmessage = ({data}) => { 
+            let diameters = data.diameters as ArrayLike<number> | undefined;
+            if (!diameters) return;
+            diameters = diameters.length !== this.n ? linear(
+                new Array(this.n).fill(0).map((_, i) => i/(this.n - 1)),
+                new Array(data.diameters.length).fill(0).map((_, i) => i/(diameters!.length - 1)),
+                Array.from(diameters)
+            ) : diameters;
+            this.restDiameter.set(diameters); 
+        }
         this.autoConstrictions = options?.processorOptions?.autoConstrictions ?? true;
     }
 
@@ -402,7 +412,7 @@ class TractProcessor extends AudioWorkletProcessor {
 
     addTransient(position: number) {
         const transient: Transient = {
-            position, timeAlive: 0, lifeTime: 0.2, strength: 0.3, exponent: 200
+            position, timeAlive: 0, lifeTime: 0.2, strength: 0.3 * this.intensity, exponent: 200
         }
         this.transients.push(transient);
     }

@@ -148,7 +148,7 @@ export class RPTTractNode extends AudioWorkletNode {
         this.port.onmessage = this.onPortMessage;
     }   
 
-    setDiameters(diameters: Float64Array) {
+    setDiameters(diameters: ArrayLike<number>) {
         this.port.postMessage({diameters});
     }
 
@@ -248,11 +248,8 @@ export class RPTTractUI {
     }
 
     init() {
-
         const n = this.n;
-
-        this.noseDiameter = new Float64Array(this.noseLength);
-
+        
         const newDiameters = new Float64Array(n);
         for (let i = 0; i < n; i++) {
             newDiameters[i] = 0;
@@ -260,7 +257,8 @@ export class RPTTractUI {
             else if (i < 12*n/44) newDiameters[i] = 1.1;
             else newDiameters[i] = 1.5;
         }
-
+        
+        this.noseDiameter = new Float64Array(this.noseLength);
         for (let i = 0; i < this.noseLength; i++) {
             let diameter;
             let d = 2 * (i / this.noseLength);
@@ -269,7 +267,6 @@ export class RPTTractUI {
             diameter = Math.min(diameter, 1.9);
             this.noseDiameter[i] = diameter;
         }
-
         this.tract.setDiameters(newDiameters);
     }
 
