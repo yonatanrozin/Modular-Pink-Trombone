@@ -14,12 +14,12 @@ export default class RPT {
 
     audioContext: AudioContext;
 
-    private whiteNoise: AudioBufferSourceNode;
-    private aspirationFilter: BiquadFilterNode;
-    private fricativeFilter: BiquadFilterNode;
-    private glottis: RPTGlottisNode;
-    private tract: RPTTractNode;
-    private gainNode: GainNode;
+    protected whiteNoise: AudioBufferSourceNode;
+    protected aspirationFilter: BiquadFilterNode;
+    protected fricativeFilter: BiquadFilterNode;
+    protected glottis: RPTGlottisNode;
+    protected tract: RPTTractNode;
+    protected gainNode: GainNode;
 
     connected = false;
 
@@ -76,10 +76,6 @@ export default class RPT {
         this.tract.disconnect();
         this.gainNode.disconnect();
         this.connected = false;
-    }
-
-    setDiameters(diameters: Float64Array) {
-        this.tract.setDiameters(diameters);
     }
 
     UIComponent = () => this.tract.UIComponent({glottis: this.glottis});
@@ -267,7 +263,7 @@ export class RPTTractUI {
             diameter = Math.min(diameter, 1.9);
             this.noseDiameter[i] = diameter;
         }
-        this.tract.setDiameters(newDiameters);
+        this.tract.diameters = newDiameters;
     }
 
     tongueIndexFromNormalized(i: number = this.tongueIndex) {
