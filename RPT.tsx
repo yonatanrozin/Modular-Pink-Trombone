@@ -386,7 +386,7 @@ export class RPTTractUI {
         this.ctx!.globalAlpha = 0.7;
         this.drawText(n*0.93, 0.8+0.8*this.tract.diameters[n-1], " lip"); 
 
-        this.drawCircle(this.tract.constrictionIndex.value * this.n, this.tract.constrictionDiameter.value, 10)
+        this.drawCircle(this.tract.constrictionIndex.value * (this.n - 1), this.tract.constrictionDiameter.value, 10)
         this.drawBackground();
         this.drawKeyboard();
         this.drawPitchControl();
@@ -822,7 +822,7 @@ export class RPTTractUI {
             if (diameter < 0) diameter = 0;  
         }
 
-        this.tract.constrictionIndex.value = index ? index/this.n : 0;
+        this.tract.constrictionIndex.value = index ? index/(this.n - 1) : 0;
         this.tract.constrictionDiameter!.value = diameter || 0;
         // this.voice.fricativeIntensity!.value = 1;
     }
