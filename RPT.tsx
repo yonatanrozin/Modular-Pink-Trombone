@@ -66,6 +66,7 @@ export default class RPT {
         this.tract.connect(this.gainNode);
         this.gainNode.connect(destination);
         this.connected = true;
+        return destination;
     }
 
     disconnect() {
@@ -78,7 +79,7 @@ export default class RPT {
         this.connected = false;
     }
 
-    UIComponent = () => this.tract.UIComponent({glottis: this.glottis});
+    UIComponent = (props?: {keyboard?: boolean}) => this.tract.UIComponent({...props, glottis: this.glottis});
 
     private getWhiteNoiseSource(ctx: AudioContext): AudioBufferSourceNode {
         const whiteNoise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -148,14 +149,14 @@ export class RPTTractNode extends AudioWorkletNode {
         this.port.postMessage({diameters});
     }
 
-    UIComponent = (props: {glottis?: RPTGlottisNode}) => {
+    UIComponent = (props: {glottis?: RPTGlottisNode, keyboard?: boolean}) => {
 
-        const {glottis} = props;
+        const {glottis, keyboard} = props;
         const [UI, setUI] = useState<RPTTractUI>();
         const canvasRef = useRef<HTMLCanvasElement>(null);
         const animationFrame = useRef<number>();
 
-        useEffect(() => { setUI(new RPTTractUI(this, glottis)); }, [this]);
+        useEffect(() => { setUI(new RPTTractUI(this, glottis, keyboard)); }, [this]);
 
         useEffect(() => {
             if (!canvasRef.current || !UI) return;
@@ -168,7 +169,7 @@ export class RPTTractNode extends AudioWorkletNode {
             return () => { cancelAnimationFrame(animationFrame.current!); }
         }, [canvasRef, UI]);
 
-        if (UI) return <canvas ref={canvasRef} width={600} height={glottis ? 700 : 600} className="RPT-tract-canvas"
+        if (UI) return <canvas ref={canvasRef} width={600} height={glottis && keyboard ? 700 : 600} className="RPT-tract-canvas"
             onMouseDown={UI.startMouse} onMouseUp={UI.endMouse} onMouseMove={UI.moveMouse} 
         />
     }
@@ -208,6 +209,7 @@ export class RPTTractUI {
     fillColour = 'pink';
     lineColour = '#C070C6';
 
+    hasKeyboard: boolean;
     keyboardTop = 600;
     keyboardLeft = 0;
     keyboardWidth = 600;
@@ -237,9 +239,10 @@ export class RPTTractUI {
     mouseTouch: RPTTouch = {x: 0, y: 0, alive: false, index: 0, diameter: 0};
     touchesWithMouse: RPTTouch[] = [];
 
-    constructor(tract: RPTTractNode, glottis?: RPTGlottisNode) {
+    constructor(tract: RPTTractNode, glottis?: RPTGlottisNode, keyboard: boolean = false) {
         this.glottis = glottis;
         this.tract = tract;
+        this.hasKeyboard = keyboard;
         this.init();
     }
 
@@ -389,7 +392,6 @@ export class RPTTractUI {
         this.drawCircle(this.tract.constrictionIndex.value * (this.n - 1), this.tract.constrictionDiameter.value, 10)
         this.drawBackground();
         this.drawKeyboard();
-        this.drawPitchControl();
         this.drawPositions();
     }
 
@@ -542,63 +544,67 @@ export class RPTTractUI {
         this.ctx!.globalAlpha = 1.0;
     }
 
-    drawKeyboard() {      
-        this.ctx!.strokeStyle = palePink;
-        this.ctx!.fillStyle = palePink;        
-        this.ctx!.globalAlpha = 1.0;     
-        this.ctx!.lineCap = 'round';        
-        this.ctx!.lineJoin = 'round';        
+    drawKeyboard() {   
+        
+        if (!this.hasKeyboard || !this.ctx) return;
+
+        this.ctx.strokeStyle = palePink;
+        this.ctx.fillStyle = palePink;        
+        this.ctx.globalAlpha = 1.0;     
+        this.ctx.lineCap = 'round';        
+        this.ctx.lineJoin = 'round';        
             
         this.drawBar(0.0, 0.4, 8);
-        this.ctx!.globalAlpha = 0.7;         
+        this.ctx.globalAlpha = 0.7;         
         this.drawBar(0.52, 0.72, 8);
         
-        this.ctx!.strokeStyle = "orchid";   
-        this.ctx!.fillStyle = "orchid";
+        this.ctx.strokeStyle = "orchid";   
+        this.ctx.fillStyle = "orchid";
         for (let i=0; i< this.semitones; i++) {
             const keyWidth = this.keyboardWidth/this.semitones;
             const x = this.keyboardLeft+(i+1/2)*keyWidth;
             const y = this.keyboardTop;
             if (this.marks[(i+3)%12]==1) {
-                this.ctx!.lineWidth = 4;
-                this.ctx!.globalAlpha = 0.4;  
+                this.ctx.lineWidth = 4;
+                this.ctx.globalAlpha = 0.4;  
             }
             else {
-                this.ctx!.lineWidth = 3;
-                this.ctx!.globalAlpha = 0.2;  
+                this.ctx.lineWidth = 3;
+                this.ctx.globalAlpha = 0.2;  
             }
-            this.ctx!.beginPath();
-            this.ctx!.moveTo(x,y+9);
-            this.ctx!.lineTo(x, y+this.keyboardHeight*0.4-9);
-            this.ctx!.stroke();
+            this.ctx.beginPath();
+            this.ctx.moveTo(x,y+9);
+            this.ctx.lineTo(x, y+this.keyboardHeight*0.4-9);
+            this.ctx.stroke();
             
-            this.ctx!.lineWidth = 3;
-            this.ctx!.globalAlpha = 0.15;   
+            this.ctx.lineWidth = 3;
+            this.ctx.globalAlpha = 0.15;   
             
-            this.ctx!.beginPath();
-            this.ctx!.moveTo(x,y+this.keyboardHeight*0.52+6);
-            this.ctx!.lineTo(x, y+this.keyboardHeight*0.72-6);
-            this.ctx!.stroke();  
+            this.ctx.beginPath();
+            this.ctx.moveTo(x,y+this.keyboardHeight*0.52+6);
+            this.ctx.lineTo(x, y+this.keyboardHeight*0.72-6);
+            this.ctx.stroke();  
           
         }
         
-        this.ctx!.fillStyle = "orchid";
-        this.ctx!.font="17px Arial";
-        this.ctx!.textAlign = "center";
-        this.ctx!.globalAlpha = 0.7; 
-        this.ctx!.fillText("voicebox control", 300, 490 + 100); //+100 to move above keyboard
-        this.ctx!.fillText("pitch", 300, 592 + 100);
-        this.ctx!.globalAlpha = 0.3; 
-        this.ctx!.strokeStyle = "orchid";
-        this.ctx!.fillStyle = "orchid";  
-        this.ctx!.save()
-        this.ctx!.translate(410, 587 + 100);
+        this.ctx.fillStyle = "orchid";
+        this.ctx.font="17px Arial";
+        this.ctx.textAlign = "center";
+        this.ctx.globalAlpha = 0.7; 
+        this.ctx.fillText("voicebox control", 300, 490 + 100); //+100 to move above keyboard
+        this.ctx.fillText("pitch", 300, 592 + 100);
+        this.ctx.globalAlpha = 0.3; 
+        this.ctx.strokeStyle = "orchid";
+        this.ctx.fillStyle = "orchid";  
+        this.ctx.save()
+        this.ctx.translate(410, 587 + 100);
         this.drawArrow(80, 2, 10);
-        this.ctx!.translate(-220, 0);
-        this.ctx!.rotate(Math.PI);
+        this.ctx.translate(-220, 0);
+        this.ctx.rotate(Math.PI);
         this.drawArrow(80, 2, 10);
-        this.ctx!.restore(); 
-        this.ctx!.globalAlpha=1.0;        
+        this.ctx.restore(); 
+        this.ctx.globalAlpha=1.0;     
+        this.drawPitchControl();
     }
 
     drawBar(topFactor: number, bottomFactor: number, radius: number) {
@@ -781,7 +787,7 @@ export class RPTTractUI {
         if (this.tongueTouch && !this.tongueTouch.alive) this.tongueTouch = undefined;
         if (this.keyboardTouch && !this.keyboardTouch.alive) this.keyboardTouch = undefined;
 
-        if (this.glottis && this.keyboardTouch) { //keyboard is touched
+        if (this.hasKeyboard && this.glottis && this.keyboardTouch) { //keyboard is touched
             const touch = this.keyboardTouch;
             const local_y = constrain(touch.y - this.keyboardTop-10, 0, this.keyboardHeight-26);
             const local_x = touch.x - this.keyboardLeft;
@@ -789,8 +795,6 @@ export class RPTTractUI {
             this.glottis.frequency.value = this.baseNote * Math.pow(2, semitone/12);
             const t = constrain(1-local_y / (this.keyboardHeight-28), 0, 1);
             this.glottis.tenseness.value = 1 - Math.cos(t*Math.PI*0.5);
-            // x = touch.x;
-            // y = local_y + this.keyboardTop+10 - 100;
             return;
         }
 
