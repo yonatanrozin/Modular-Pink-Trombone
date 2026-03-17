@@ -151,7 +151,7 @@ class GlottisProcessor extends AudioWorkletProcessor {
         let vibrato = 0;
         vibrato += this.vibratoAmount * Math.sin(2*Math.PI * this.totalTime * this.vibratoFrequency);          
         vibrato += 0.02 * this.noise.simplex1(this.totalTime * 4.07);
-        vibrato += 0.04 * this.noise.simplex1(this.totalTime * 2.15);
+        // vibrato += 0.04 * this.noise.simplex1(this.totalTime * 2.15);
         if (this.UIFrequency>this.smoothFrequency) 
             this.smoothFrequency = Math.min(this.smoothFrequency * 1.1, this.UIFrequency);
         if (this.UIFrequency<this.smoothFrequency) 
