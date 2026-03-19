@@ -1,69 +1,90 @@
 # React Pink Trombone
 A modular, polyphonic refactorization of [Pink Trombone](https://dood.al/pinktrombone/) and an interactive ```<Tract>``` UI component for use in React apps.
 
+Tested with:
+- Typescript 5.5.4
+- Vite 5.4.21
+- Firefox 
+- Chrome _when compiled with Vite build target ```esnext```_
+
 ## Installation
 - ```git clone``` this repo into a desired location in your project directory, likely somewhere within ```src```. The project should have React installed with TypeScript already.
 
 ## Usage
 
 ### Adding AudioWorklet Modules
-- Create a ```new AudioContext()``` or use an existing one. You may want to store it in a component state.
-- Once the AudioContext is created, you must load the AudioWorklet modules, defined inside ```pink_trombone_processor.js```. You can do this inside a ```useEffect``` with the AudioContext state as a dependency.
-  - If you cloned your repo into ```src```: ```await <yourAudioContext>.audioWorklet.addModule(new URL('path/to/pink_trombone_processor.js', import.meta.url));```
-    - The above example is for projects using Vite. It may have to be changed for other React frameworks.
-  - Finding the correct URL for adding AudioWorklet modules is often tricky. If the above doesn't work, you may move ```pink_trombone_processor.js``` and ```noise.js``` into your public folder and use ```await <yourAudioContext>.audioWorklet.addModule('path/to/pink_trombone_processor.js>);``` instead. __The path should be relative to the public directory!__
-  - If the above doesn't work either, you may try ```import WorkletProcessor from "path/to/pink_trombone_processor.js?worklet&url``` and then ```await <audioCtx>.audioWorklet.addModule(WorkletProcessor)```
+- Create a ```new AudioContext()``` or use an existing one.
+- Load the custom AudioWorklet modules with ```await addRPT(ctx)```
+  - Be sure to only do this once! (i.e. inside a useEffect)
     
-### RPT Voice(s)
-The ```RPT_Voice``` class manages a single modular Pink Trombone voice, with methods for changing audio parameters and manipulating speech.
-
-#### Initialization
-- Create a ```new RPT_Voice(<name/number>, <yourAudioContext>, <audioDestination?>)```, or several. You may want to store it in a component state.
-  - ```name/number``` can be any string or number. The value doesn't matter, but it's used in error messages to identify the specific voice. It's therefore recommended to use a unique value for each voice.
-  - ```audioDestination``` is an optional ```AudioNode``` which the voice AudioWorklet will route its audio output to. If not specified, it will default to the AudioContext destination (the audio output device).
-  - Once a voice is created, enable audio processing with ```<voice>.connect()``` whe needed. When a voice is no longer needed, call ```<voice>.disconnect()``` to free up resources.
+### Creating voice(s)
+- Create a ```new RPT(audioCtx, autoConstrictions)``` to create a complete Pink Trombone voice with a glottis and tract and connections handled automatically.
+- Alternatively, create a ```new RPTTractNode(ctx, autoConstrictions)``` to create a tract module that can filter a custom audio source (for a vocoder-like effect)
+- Use ```<RPT>.connect(destination)``` to connect your voice to your target audioNode
+  - Be sure to use ```<RPT>.disconnect()``` to stop the audio processing when voice is no longer needed!
+- See Tract module info below for information about ```autoConstrictions```
  
-#### Glottis AudioParams
-The Glottis module produces a raw "glottal source" - the sound produced by the vocal cords before being filtered by the vocal tract. Access Glottis parameters of a voice using ```<voice>.glottis.parameters.get(<param>)``` and use any AudioParam methods such as ```setTargetAtTime```, or write values to ```<AudioParam>.value``` directly.
-- Timbral AudioParams - general timbral properties of the voice not used for speech generation:
-  - ```frequency``` (float, in Hz) - the fundamental frequency of the voice
-  - ```tenseness``` (float 0-1) - between 0, a breathy whisper; and 1, a harsh, strained tone. Default and "natural" voice is around 0.6.
-  - ```intensity``` (float 0-1) - the volume of the pitched component of the voice. Generally stays at 1, but should drop to 0 for unpitched consonants such as S or F. 
-    - Don't treat this as a voice gain value! Use ```<voice>.setGain``` to set the gain on the entire voice.
-  - ```aspiration``` (float 0-1) - scales the volume of the unpitched "breath" component of the glottal source. 
-    - The volume of the unpitched component scales inversely with tenseness and is then multiplied by this value. Will usually stay at the default 1 for the original effect. Decrease this value when using EQs that attenuate higher frequencies to keep the breathy quality from being too prominent.
-    - This does NOT affect fricatives! See Tract parameter "fricatives"
-  - ```vibrato-frequency``` (in Hz) - the frequency of a sine wave that modulates the voice frequency to create a vibrato effect.
-  - ```vibrato-amount``` (unit??) - the amplitude of the vibrato sine wave. Units unknown, but the number should be very small. A typical vibrato amount is around 0.025. Anything above 0.4 will start to sound ridiculous. The effect is not very realistic.
-- Speech AudioParams - manipulated over time to create speech:
-  - ```tenseness-mult``` (float 0-1) - a multiplier of the tenseness parameter, used to scale the final tenseness between 0 and the base tenseness value.
-  - ```pitchbend``` (in semitones, not necessary for speech) - bends the fundamental frequency up/down the specified # of semitones.
+### Glottis module
 
-#### Tract AudioParams
-The Tract module filters the glottal source output by the Glottis using several parameters modeled after the human vocal tract. Access Tract parameters of a voice using ```<voice>.tract.parameters.get(<param>)``` and use any AudioParam methods, or write to ```<AudioParam>.value``` directly.
-- Timbral AudioParams - general properties of the vocal tract, not used during speech generation:
-  - ```n``` (int) - the length of the vocal tract, in segments. Default "male" length is 44. Shortening the tract will produce gradually "younger", more "feminine" voices.
-    - If using a corresponding Tract UI component, use ```<voice>.setN(<n>)``` instead of writing the parameter value directly to update the UI visuals as well.
-- Speech AudioParams - manipulated over time to create speech:
-  - ```tongue-index``` + ```tongue-diameter``` - the index + diameter of the tongue position, relevant for vowel production. In the GUI, these are manipulated by dragging the pink circle around the "tongue control" area.
-  - Tongue index is from 0 - 1, representing the left- and right-most sides of the tongue control area. Tongue diameter is always between 2.05 and 3.5, where higher numbers are LOWER in the tongue control area.
-  - ```constriction-index``` + ```constriction-diameter``` - the index + diameter of the tongue constriction, relevant for producing most consonants. In the GUI, these are manipulated by clicking/dragging around the "oral cavity" area.
-    - Constriction index is between 0 and 1, representing the length of the oral tract, where 0 is at the throat and 1 is at the opening of the mouth.
-  - ```lip-diameter``` - the diameter of the opening of the lips, used for producing O and U vowels. Represents the same vertical position as constriction diameter.
-  - ```velum-target``` (float 0.01 - 0.4, in cm?) - the width of the velum, which connects the oral and nasal tracts. Closed by default but opens for nasal consonants such as N, M and NG.
-  - ```fricatives``` (float 0+) - the volume of fricatives, white noise produced by tight tongue constrictions for consonants such as S and V. Default volume is 1.
-  - ```transients``` (float 0-1) - the volume of transients, short clicks produced by the tongue when leaving the roof of the mouth.
-    - Default volume is 1, which is sometimes a bit loud for some consonants.
-  - ```movement-speed``` (float 0+ in cm/s?, not required for speech) - the speed with which the tract measurements smoothly approach their target values. Default is 15. Set to a negative number for instant or 0 to freeze the tract at its current shape.
+The Glottis module produces a raw "glottal source" - the sound produced by the vocal cords before being filtered by the vocal tract. This sound on its own is very unnatural, and will typically be immediately filtered by the vocal tract. You can create a Glottis module by itself with ```new RPTGlottisNode(audioCtx)``` but it's almost always better to just create a ```new RPT(audioCtx)```, which has a glottis and tract module included.
 
-#### Gain + Pan
-These are applied to the entire voice after being filtered by the vocal tract.
-  - ```<voice>.setGain(gain)``` - sets the gain (volume) of the voice (0 for silent, 1 for default, 1+ to amplify)
-  - ```<voice>.setPanning(pan)``` - sets the stereo panning of the voice (-1 for L -> 1 for R, default 0 for center)
+#### AudioParams
+
+Access glottis params with ```<RPT/RPTGlottisNode>.<name>``` and use it like any other AudioParam - write to its ```value``` property directly or (recommended:) use AudioParam methods such as ```setTargetAtTime``` and ```setValueAtTime```
+
+Timbral Audioparams - these should be used to adjust the timbral properties of the voice, and should generally not be manipulated for the purpose of speech generation:
+
+- ```frequency``` (float, in Hz) - the fundamental frequency of the voice
+- ```tenseness``` (float 0-1) - between 0, a breathy whisper; and 1, a harsh, strained tone. Default and "natural" voice is around 0.6.
+
+Speech-related AudioParams - these can be manipulated over time to create speech:
+
+- ```intensity``` (float 0-1) - the volume of air flow produced by the voice, which affects volume of pitched component of the voice, as well as aspiration and fricative noise. 
+    - Don't treat this as a voice gain value! Use ```<RPT>.gain``` to set the gain on the entire voice or create a GainNode manually and adjust it's gain AudioParam.
+- ```tenseness-scale``` (float 0-1) - a multiplier of the tenseness parameter, used to scale the final tenseness between 0 and the base tenseness value. 
+  - Don't use this as the voice's general resting tenseness - use the ```tenseness``` param instead
+  <!-- - ```pitchbend``` (in semitones, optional, default 0) - bends the fundamental frequency up/down a specified # of semitones (half-steps) -->
+
+### Tract Module
+
+The Tract module filters a glottal source, typically outputted by a Glottis module, but can be used with any custom audio source for a vocoder-like effect. A Tract module can be created with ```new RPTTractModule(audioCtx, autoConstrictions)``` if you want to connect a custom audio source yourself, but in most cases you can create a ```new RPT(audioCtx, autoConstrictions)```, which includes a Glottis and Tract module automatically.
+
+#### autoConstrictions (boolean)
+- True - default Pink Trombone behavior: tongue & constriction index/diameter audioParam values will reshape the vocal tract diameters automatically. Constriction index + diameter params will additionally affect the timbre of fricative white noise, when present
+- False - manual control: tract diameters are set manually with ```<RPT/RPTTractModule>.setDiameters(Float64Array)```. Tongue index/diameter values have no effect. Constriction index/diameter values have no effect on the tract shape but still affect white noise and must be calculated manually (typically using the _normalized_ position and value of the smallest tract diameter)
+
+#### Tract Diameters
+
+Use ```RPT/RPTTractModule.setDiameters(<Float64Array>)``` to manually set the tract diameter values used by this tract. This is typically only done when autoConstrictions is disabled to manually create speech.
+- AutoConstrictions == true: this will only affect the "rest diameter" - the base diameter values onto which the tongue position and constrictions are overlaid according to AudioParam values
+- AutoConstrictions == false: this will set the voice's final diameters, with (presumably) tongue values included
+
+#### Params
+
+Access tract params with ```<RPT/RPTTractNode>.<name>``` and use it like any other AudioParam - write to its ```value``` property directly or (recommended:) use AudioParam methods such as ```setTargetAtTime``` and ```setValueAtTime```
+
+Timbral AudioParams - general properties of the vocal tract, not used during speech generation:
+
+- ```n``` (int, default 44) - the length of the vocal tract, in segments. Default "male" length is 44. Manipulating the length will primarily affect vowel formants and can be used (along with other audioParams) to adjust the percieved "gender" and age of the voice.
+
+Speech AudioParams - manipulated over time to create speech:
+
+- ```tongue-index``` & ```tongue-diameter``` - the index + diameter of the tongue position, relevant for vowel production. In the GUI, these are manipulated by dragging the pink circle around the "tongue control" area.
+  - Tongue index is __normalized__ between 0 - 1, representing the left- and right-most sides of the tongue control area. Tongue diameter is always between 2.05 and 3.5, where higher numbers are LOWER in the tongue control area.
+  - _No effect if autoConstriction is false_
+- ```constriction-index``` & ```constriction-diameter``` - the index + diameter of the tongue constriction, relevant for producing most consonants. In the GUI, these are manipulated by clicking/dragging around the "oral cavity" area.
+  - Constriction index is __normalized__ between 0 and 1, representing the complete length of the oral tract, where 0 is at the throat and 1 is at the opening of the lips.
+  - Set to 0 for no constriction
+  - _No effect on tract diameters if autoConstriction is false_ but will still affect fricative noise! This can generally be set to the normalized position and value of the smallest tract diameter (unless it's in the throat)
+- ```velum-target``` (float 0.01 - 0.4, in cm) - the width of the opening of the velum, which connects the oral and nasal tracts. Closed by default but opens for nasal consonants such as N and M.
+- ```movement-speed``` (float 0+ in cm/s?, not required for speech) - the speed with which the final tract measurements smoothly approach their target values. Default is 15. Set to a negative number for instant (not recommended) or 0 to freeze the tract at its current shape.
+
+### Gain
+
+Reference the gain AudioParam of a built-in GainNode with ```<RPT>.gain```. If you're using an independent Glottis/Tract module, you'll have to create and connect the GainNode manually.
 
 ### Tract UI Component
-The ```<Tract>``` component renders a single interactive tract UI that looks and behaves almost identically to the one found in the original Pink Trombone.
-- Add a ```<Tract voice={<RPT_Voice>} <reportVowel?> <style?>/>``` component anywhere in your component tree. Props:
-  - voice: the ```RPT_Voice``` object the tract UI should be linked to
-  - ```reportVowel``` (boolean - optional): report current tongue index + diameter on hover
-  - ```style``` (CSSProperties) - a React CSS properties object that gets applied directly to the <canvas> element.
+The ```<Tract>``` component renders a single interactive tract UI that looks and behaves almost identically to the one found in the original Pink Trombone and automatically manipulates voice parameters and diameters in response to mouse interaction.
+- With an RPT voice created, render a ```<RPT.UIComponent />``` in your DOM. 
+  - Use ```<RPT.UIComponent keyboard/>``` to render the UI with the interactive frequency/tenseness keyboard
+- Tract diameters will NOT response to mouse events if autoconstrictions was set to false in the voice constructor.

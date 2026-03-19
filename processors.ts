@@ -1,6 +1,5 @@
 import { linear } from "everpolate";
 import Noise from "./noise.ts";
-// import { constrain, RPTTractMessageData } from "./RPT2";
 
 type AudioParamDescriptor = {
     name: string;
@@ -184,9 +183,10 @@ class GlottisProcessor extends AudioWorkletProcessor {
 
         const outLen = glottisOut.length;
         for (let i = 0; i < outLen; i++) {
-            this.UIFrequency = parameters["frequency"][i];
-            this.intensity = parameters["intensity"][i];
-            this.UITenseness = parameters["tenseness"][i] * parameters["tenseness-scale"][i];
+            this.UIFrequency = parameters["frequency"][i] ?? parameters["frequency"][0];
+            this.intensity = parameters["intensity"][i] ?? parameters["intensity"][0];
+            this.UITenseness = (parameters["tenseness"][i] ?? parameters["tenseness"][0])
+                * (parameters["tenseness-scale"][i] ?? parameters["tenseness-scale"][0]);
             this.loudness = Math.pow(this.UITenseness, 0.25); 
             [glottisOut[i], noiseModOut[i]] = this.runStep(i / outLen, noiseIn[i]); 
             intensityOut[i] = this.intensity;
@@ -601,15 +601,16 @@ class TractProcessor extends AudioWorkletProcessor {
 
         const newN = Math.floor(parameters["n"][0]);
         if (newN != this.n) this.init(newN);
-        this.movementSpeed = parameters["movement-speed"][0];
 
         for (let i = 0; i < voiceOut.length; i++) {
-            this.tongueIndex = parameters["tongue-index"][i] * (this.tongueUpperIndexBound - this.tongueLowerIndexBound)
-                 + this.tongueLowerIndexBound;;
-            this.tongueDiameter = parameters["tongue-diameter"][i];
-            this.constrictionIndex = parameters["constriction-index"][i] * (this.n - 1);
-            this.constrictionDiameter = parameters["constriction-diameter"][i];
-            this.velumTarget = parameters["velum-target"][i];
+            this.movementSpeed = parameters["movement-speed"][0] ?? parameters["movement-speed"][i];
+            this.tongueIndex = (parameters["tongue-index"][i] ?? parameters["tongue-index"][0]) 
+                * (this.tongueUpperIndexBound - this.tongueLowerIndexBound) + this.tongueLowerIndexBound;
+            this.tongueDiameter = parameters["tongue-diameter"][i] ?? parameters["tongue-diameter"][0];
+            this.constrictionIndex = (parameters["constriction-index"][i] ?? parameters["constriction-index"][0]) 
+                * (this.n - 1);
+            this.constrictionDiameter = parameters["constriction-diameter"][i] ?? parameters["constriction-diameter"][0];
+            this.velumTarget = parameters["velum-target"][i] ?? parameters["velum-target"][0];
             this.intensity = intensityIn[i];
 
             const lambda1 = i / voiceOut.length;

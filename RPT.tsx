@@ -117,6 +117,7 @@ export class RPTGlottisNode extends AudioWorkletNode {
 
     constructor(ctx: AudioContext) {
         super(ctx, "glottis-processor", {
+            numberOfInputs: 1, 
             numberOfOutputs: 3, //glottal signal, noise modulator, intensity
             outputChannelCount: [1, 1, 1],
         });
@@ -139,7 +140,9 @@ export class RPTTractNode extends AudioWorkletNode {
     constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
         super(ctx, "tract-processor", {
             numberOfInputs: 4, //glottal signal, white noise, noise modulator, glottis intensity
-            processorOptions: {autoConstrictions}
+            numberOfOutputs: 1,
+            outputChannelCount: [1],
+            processorOptions: {autoConstrictions},
         });
         this.port.start();
         this.port.onmessage = this.onPortMessage;
