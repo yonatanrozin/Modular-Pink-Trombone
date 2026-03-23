@@ -49,7 +49,6 @@ export default class RPT {
         this.tract = new RPTTractNode(ctx, autoConstrictions);
         this.gainNode = new GainNode(ctx);
         this.whiteNoise.start();
-        this.connect(ctx.destination);
     }
 
     connect(destination: AudioNode) {
