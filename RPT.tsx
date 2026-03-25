@@ -31,6 +31,7 @@ export default class RPT {
     get tractN() { return this.tract.n; }
     get tongueIndex() { return this.tract.tongueIndex; }
     get tongueDiameter() { return this.tract.tongueDiameter; }
+    get constrictionWidth() { return this.tract.constrictionWidth; }
     get constrictionIndex() { return this.tract.constrictionIndex; }
     get constrictionDiameter() { return this.tract.constrictionDiameter; }
     get velumTarget() { return this.tract.velumTarget; }
@@ -40,13 +41,13 @@ export default class RPT {
     get diameters() { return this.tract.diameters; }
     get velum() { return this.tract.velum; }
     
-    constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
+    constructor(ctx: AudioContext, hasTongue: boolean = true) {
         this.audioContext = ctx;
         this.whiteNoise = this.getWhiteNoiseSource(ctx);
         this.aspirationFilter = this.getAspirationFilter(ctx);
         this.fricativeFilter = this.getFricativeFilter(ctx);
         this.glottis = new RPTGlottisNode(ctx);
-        this.tract = new RPTTractNode(ctx, autoConstrictions);
+        this.tract = new RPTTractNode(ctx, hasTongue);
         this.gainNode = new GainNode(ctx);
         this.whiteNoise.start();
     }
@@ -133,15 +134,16 @@ export class RPTTractNode extends AudioWorkletNode {
     get tongueDiameter() { return this.parameters.get("tongue-diameter")! }
     get constrictionIndex() { return this.parameters.get("constriction-index")! }
     get constrictionDiameter() { return this.parameters.get("constriction-diameter")! }
+    get constrictionWidth() { return this.parameters.get("constriction-width")! }
     get velumTarget() { return this.parameters.get("velum-target")! }
     get movementSpeed() { return this.parameters.get("movement-speed")! }
 
-    constructor(ctx: AudioContext, autoConstrictions: boolean = true) {
+    constructor(ctx: AudioContext, hasTongue: boolean = true) {
         super(ctx, "tract-processor", {
             numberOfInputs: 4, //glottal signal, white noise, noise modulator, glottis intensity
             numberOfOutputs: 1,
             outputChannelCount: [1],
-            processorOptions: {autoConstrictions},
+            processorOptions: {hasTongue},
         });
         this.port.start();
         this.port.onmessage = this.onPortMessage;

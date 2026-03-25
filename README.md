@@ -18,11 +18,18 @@ Tested with:
   - Be sure to only do this once! (i.e. inside a useEffect)
     
 ### Creating voice(s)
-- Create a ```new RPT(audioCtx, autoConstrictions)``` to create a complete Pink Trombone voice with a glottis and tract and connections handled automatically.
-- Alternatively, create a ```new RPTTractNode(ctx, autoConstrictions)``` to create a tract module that can filter a custom audio source (for a vocoder-like effect)
+- Create a ```new RPT(audioCtx, tongue?)``` to create a complete Pink Trombone voice with a glottis and tract and connections handled automatically.
+- Alternatively, create a ```new RPTTractNode(ctx, tongue?)``` to create a tract module that can filter a custom audio source (for a vocoder-like effect)
 - Use ```<RPT>.connect(destination)``` to connect your voice to your target audioNode
   - Be sure to use ```<RPT>.disconnect()``` to stop the audio processing when voice is no longer needed!
-- See Tract module info below for information about ```autoConstrictions```
+- ```tongue``` (bool, default true) - whether to allow the voice's tract diameters to be shaped by tongue index/diameter params (see below)
+
+#### Disabling tongue (controlling tract diameters manually)
+By default, the tongue index + diameter params will automatically inscribe a tongue into the voice's tract diameters. Setting tongue = false when creating a new voice will disable this.
+
+- Tongue index/diameter params will no longer have any effect on the voice, even when set by interacting with the "tongue control" area in the UI
+- _Constriction index/diameter parameters will still inscribe tongue tip constrictions and affect fricative white noise!_
+  - To use constriction index/diameter parameters to control white noise without affecting the tract diameters, set the ```constrictionWidth``` param value to 0.
  
 ### Glottis module
 
@@ -47,17 +54,15 @@ Speech-related AudioParams - these can be manipulated over time to create speech
 
 ### Tract Module
 
-The Tract module filters a glottal source, typically outputted by a Glottis module, but can be used with any custom audio source for a vocoder-like effect. A Tract module can be created with ```new RPTTractModule(audioCtx, autoConstrictions)``` if you want to connect a custom audio source yourself, but in most cases you can create a ```new RPT(audioCtx, autoConstrictions)```, which includes a Glottis and Tract module automatically.
+The Tract module filters a glottal source, typically outputted by a Glottis module, but can be used with any custom audio source for a vocoder-like effect. A Tract module can be created with ```new RPTTractModule(audioCtx, tongue?)``` if you want to connect a custom audio source yourself, but in most cases you can create a ```new RPT(audioCtx, tongue?)```, which includes a Glottis and Tract module automatically.
 
-#### autoConstrictions (boolean)
+####  (boolean)
 - True - default Pink Trombone behavior: tongue & constriction index/diameter audioParam values will reshape the vocal tract diameters automatically. Constriction index + diameter params will additionally affect the timbre of fricative white noise, when present
 - False - manual control: tract diameters are set manually with ```<RPT/RPTTractModule>.setDiameters(Float64Array)```. Tongue index/diameter values have no effect. Constriction index/diameter values have no effect on the tract shape but still affect white noise and must be calculated manually (typically using the _normalized_ position and value of the smallest tract diameter)
 
 #### Tract Diameters
 
-Use ```RPT/RPTTractModule.setDiameters(<Float64Array>)``` to manually set the tract diameter values used by this tract. This is typically only done when autoConstrictions is disabled to manually create speech.
-- AutoConstrictions == true: this will only affect the "rest diameter" - the base diameter values onto which the tongue position and constrictions are overlaid according to AudioParam values
-- AutoConstrictions == false: this will set the voice's final diameters, with (presumably) tongue values included
+Use ```RPT/RPTTractModule.setDiameters(<Float64Array>)``` to manually set the tract diameter values used by this tract. This is typically only done when tongue is disabled to manually create speech. If tongue is enabled, setting diameters will only affect the "rest diameter" - the base tract shape into which the tongue and constriction are inscribed.
 
 #### Params
 
@@ -66,25 +71,24 @@ Access tract params with ```<RPT/RPTTractNode>.<name>``` and use it like any oth
 Timbral AudioParams - general properties of the vocal tract, not used during speech generation:
 
 - ```n``` (int, default 44) - the length of the vocal tract, in segments. Default "male" length is 44. Manipulating the length will primarily affect vowel formants and can be used (along with other audioParams) to adjust the percieved "gender" and age of the voice.
+- ```constriction-width``` - A multiplier of the width of the tongue tip constriction. Set to 0 to disable tip constrictions entirely. Constriction index/diameter params will still affect fricative noise even when this is set to 0!
 
 Speech AudioParams - manipulated over time to create speech:
 
 - ```tongue-index``` & ```tongue-diameter``` - the index + diameter of the tongue position, relevant for vowel production. In the GUI, these are manipulated by dragging the pink circle around the "tongue control" area.
   - Tongue index is __normalized__ between 0 - 1, representing the left- and right-most sides of the tongue control area. Tongue diameter is always between 2.05 and 3.5, where higher numbers are LOWER in the tongue control area.
-  - _No effect if autoConstriction is false_
-- ```constriction-index``` & ```constriction-diameter``` - the index + diameter of the tongue constriction, relevant for producing most consonants. In the GUI, these are manipulated by clicking/dragging around the "oral cavity" area.
-  - Constriction index is __normalized__ between 0 and 1, representing the complete length of the oral tract, where 0 is at the throat and 1 is at the opening of the lips.
-  - Set to 0 for no constriction
-  - _No effect on tract diameters if autoConstriction is false_ but will still affect fricative noise! This can generally be set to the normalized position and value of the smallest tract diameter (unless it's in the throat)
+  - _No effect if tongue is disabled_
+- ```constriction-index``` & ```constriction-diameter``` - the index + diameter of the tongue tip constriction, relevant for producing most consonants. In the GUI, these are manipulated by clicking/dragging around the "oral cavity" area.
+  - Constriction index is __normalized__ between 0 and 1, representing the complete length of the oral tract, where 0 is at the throat and 1 is at the opening of the lips. Set to 0 for no constriction (regardless of diameter).
+  - Constriction index/diameter affect the generation of fricative white noise, regardless of constriction width (see below)
 - ```velum-target``` (float 0.01 - 0.4, in cm) - the width of the opening of the velum, which connects the oral and nasal tracts. Closed by default but opens for nasal consonants such as N and M.
-- ```movement-speed``` (float 0+ in cm/s?, not required for speech) - the speed with which the final tract measurements smoothly approach their target values. Default is 15. Set to a negative number for instant (not recommended) or 0 to freeze the tract at its current shape.
+- ```movement-speed``` (float 0+ in cm/s(?), not required for speech) - the speed with which the final tract measurements and velum width smoothly approach their target values. Default is 15. Set to 0 to freeze the tract at its current shape.
 
 ### Gain
 
-Reference the gain AudioParam of a built-in GainNode with ```<RPT>.gain```. If you're using an independent Glottis/Tract module, you'll have to create and connect the GainNode manually.
+Reference the gain AudioParam of a built-in GainNode with ```<RPT>.gain```. If you're using an independent Glottis/Tract module, you'll have to create and connect a GainNode manually.
 
 ### Tract UI Component
 The ```<Tract>``` component renders a single interactive tract UI that looks and behaves almost identically to the one found in the original Pink Trombone and automatically manipulates voice parameters and diameters in response to mouse interaction.
 - With an RPT voice created, render a ```<RPT.UIComponent />``` in your DOM. 
   - Use ```<RPT.UIComponent keyboard/>``` to render the UI with the interactive frequency/tenseness keyboard
-- Tract diameters will NOT response to mouse events if autoconstrictions was set to false in the voice constructor.

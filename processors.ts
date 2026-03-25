@@ -223,6 +223,12 @@ class TractProcessor extends AudioWorkletProcessor {
                 automationRate: "a-rate"
             },
             {
+                name: "constriction-width",
+                defaultValue: 1,
+                minValue: 0,
+                automationRate: "k-rate"
+            },
+            {
                 name: "constriction-index",
                 defaultValue: 0,
                 minValue: 0,
@@ -258,10 +264,10 @@ class TractProcessor extends AudioWorkletProcessor {
     restDiameter!: Float64Array;
     targetDiameter!: Float64Array;
 
-    autoConstrictions = true;
-
+    hasTongue = true;
     tongueIndex = 12.9;
     tongueDiameter = 2.43;
+    constrictionWidth = 1;
     constrictionIndex = 0;
     constrictionDiameter = 3;
     movementSpeed = 15;
@@ -320,7 +326,7 @@ class TractProcessor extends AudioWorkletProcessor {
             ) : diameters;
             this.restDiameter.set(diameters); 
         }
-        this.autoConstrictions = options?.processorOptions?.autoConstrictions ?? true;
+        this.hasTongue = options?.processorOptions?.hasTongue ?? true;
     }
 
     init(n = this.n) {
@@ -433,7 +439,7 @@ class TractProcessor extends AudioWorkletProcessor {
     
     addTurbulenceNoise(turbulenceNoise: number, noiseModulator: number) {
         const index = this.constrictionIndex;
-        const diameter = this.autoConstrictions ? this.constrictionDiameter : this.diameter[Math.round(index)] + 0.3; 
+        const diameter = (this.hasTongue ? this.constrictionDiameter : this.diameter[Math.round(index)]) + 0.3; 
         if (index <= 0 || index >= this.n - 1) return;
         this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * this.intensity, index, diameter, noiseModulator);
     }
@@ -454,14 +460,16 @@ class TractProcessor extends AudioWorkletProcessor {
 
     setTargetDiameters() {
         this.targetDiameter.set(this.restDiameter);
-        if (!this.autoConstrictions) return;
-        for (let i = this.bladeStart; i < this.lipStart; i++) {
-            let t = 1.1 * Math.PI * (this.tongueIndex - i) / (this.tipStart - this.bladeStart);
-            let fixedTongueDiameter = 2 + (this.tongueDiameter - 2) / 1.5;
-            let curve = (1.5 - fixedTongueDiameter + 1.7) * Math.cos(t);
-            if (i == this.bladeStart - 2 || i == this.lipStart - 1) curve *= 0.8;
-            if (i == this.bladeStart || i == this.lipStart - 2) curve *= 0.94;               
-            this.targetDiameter[i] = 1.5 - curve;
+        if (this.hasTongue) {
+
+            for (let i = this.bladeStart; i < this.lipStart; i++) {
+                let t = 1.1 * Math.PI * (this.tongueIndex - i) / (this.tipStart - this.bladeStart);
+                let fixedTongueDiameter = 2 + (this.tongueDiameter - 2) / 1.5;
+                let curve = (1.5 - fixedTongueDiameter + 1.7) * Math.cos(t);
+                if (i == this.bladeStart - 2 || i == this.lipStart - 1) curve *= 0.8;
+                if (i == this.bladeStart || i == this.lipStart - 2) curve *= 0.94;               
+                this.targetDiameter[i] = 1.5 - curve;
+            }
         }
 
         const index = this.constrictionIndex;
@@ -470,7 +478,8 @@ class TractProcessor extends AudioWorkletProcessor {
         if (index < 25) width = 10;
         else if (index >= this.tipStart) width= 5;
         else width = 10 - 5 * (index - 25) / (this.tipStart - 25);
-        if (index >= 2 && index < this.n && diameter < 3) {
+        width *= this.constrictionWidth;
+        if (index >= 2 && index < this.n && width > 0) {
             const intIndex = Math.round(index);
             for (let i = -Math.ceil(width) - 1; i < width + 1; i++) {   
                 if (intIndex + i < 0 || intIndex + i >= this.n) continue;
@@ -501,8 +510,8 @@ class TractProcessor extends AudioWorkletProcessor {
             else if (i >= this.tipStart) slowReturn = 1.0; 
             else slowReturn = 0.6+0.4*(i-this.noseStart)/(this.tipStart-this.noseStart);
             this.diameter[i] = moveTowards(diameter, targetDiameter, 
-                (this.autoConstrictions ? slowReturn : 1) * amount, 
-                (this.autoConstrictions ? 2 : 1) * amount
+                (this.hasTongue ? slowReturn : 1) * amount, 
+                (this.hasTongue ? 2 : 1) * amount
             );
         }
         if (this.lastObstruction>-1 && newLastObstruction == -1 && this.noseA[0]<0.05) {
@@ -601,6 +610,8 @@ class TractProcessor extends AudioWorkletProcessor {
 
         const newN = Math.floor(parameters["n"][0]);
         if (newN != this.n) this.init(newN);
+
+        this.constrictionWidth = parameters["constriction-width"][0];
 
         for (let i = 0; i < voiceOut.length; i++) {
             this.movementSpeed = parameters["movement-speed"][0] ?? parameters["movement-speed"][i];
