@@ -417,8 +417,9 @@ class TractProcessor extends AudioWorkletProcessor {
     }
 
     addTransient(position: number) {
+        const strength = 0.3 * this.intensity * (1 - this.noseDiameter[0]/0.4) ** 2;
         const transient: Transient = {
-            position, timeAlive: 0, lifeTime: 0.2, strength: 0.3 * this.intensity, exponent: 200
+            position, timeAlive: 0, lifeTime: 0.2, strength, exponent: 200
         }
         this.transients.push(transient);
     }
