@@ -27,6 +27,7 @@ export default class RPT {
     get tenseness() { return this.glottis.tenseness; }
     get tensenessScale() { return this.glottis.tensenessScale; }
     get intensity() { return this.glottis.intensity; }
+    get pitchbend() { return this.glottis.pitchbend; }
     
     get tractN() { return this.tract.n; }
     get tongueIndex() { return this.tract.tongueIndex; }
@@ -114,6 +115,7 @@ export class RPTGlottisNode extends AudioWorkletNode {
     get tenseness() { return this.parameters.get("tenseness")! }
     get tensenessScale() { return this.parameters.get("tenseness-scale")! }
     get intensity() { return this.parameters.get("intensity")! }
+    get pitchbend() { return this.parameters.get("pitchbend")! }
 
     constructor(ctx: AudioContext) {
         super(ctx, "glottis-processor", {

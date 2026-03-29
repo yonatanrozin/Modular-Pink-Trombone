@@ -42,15 +42,15 @@ Access glottis params with ```<RPT/RPTGlottisNode>.<name>``` and use it like any
 Timbral Audioparams - these should be used to adjust the timbral properties of the voice, and should generally not be manipulated for the purpose of speech generation:
 
 - ```frequency``` (float, in Hz) - the fundamental frequency of the voice
-- ```tenseness``` (float 0-1) - between 0, a breathy whisper; and 1, a harsh, strained tone. Default and "natural" voice is around 0.6.
+- ```tenseness``` (float 0-1) - between 0, a breathy whisper; and 1, a harsh, strained tone. Default "natural" voice is around 0.6.
+- ```pitchbend``` (float, in semitones) - bends the pitch up or down the specified number of semitones (half-steps). Use to create melodies or modulate with a sine wave for vibrato.
 
 Speech-related AudioParams - these can be manipulated over time to create speech:
 
 - ```intensity``` (float 0-1) - the volume of air flow produced by the voice, which affects volume of pitched component of the voice, as well as aspiration and fricative noise. 
     - Don't treat this as a voice gain value! Use ```<RPT>.gain``` to set the gain on the entire voice or create a GainNode manually and adjust it's gain AudioParam.
 - ```tenseness-scale``` (float 0-1) - a multiplier of the tenseness parameter, used to scale the final tenseness between 0 and the base tenseness value. 
-  - Don't use this as the voice's general resting tenseness - use the ```tenseness``` param instead
-  <!-- - ```pitchbend``` (in semitones, optional, default 0) - bends the fundamental frequency up/down a specified # of semitones (half-steps) -->
+  - Don't use this as the voice's general resting tenseness - use the ```tenseness``` param above instead.
 
 ### Tract Module
 

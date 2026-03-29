@@ -41,6 +41,11 @@ class GlottisProcessor extends AudioWorkletProcessor {
                 minValue: 0,
                 maxValue: 1,
                 automationRate: "a-rate"
+            },
+            {
+                name: "pitchbend",
+                defaultValue: 0,
+                automationRate: "a-rate"
             }
         ]
     }
@@ -183,7 +188,10 @@ class GlottisProcessor extends AudioWorkletProcessor {
 
         const outLen = glottisOut.length;
         for (let i = 0; i < outLen; i++) {
-            this.UIFrequency = parameters["frequency"][i] ?? parameters["frequency"][0];
+            const frequency = parameters["frequency"][i] ?? parameters["frequency"][0];
+            const pitchbend = parameters["pitchbend"][i] ?? parameters["pitchbend"][0]; 
+            
+            this.UIFrequency = frequency * Math.pow(2, pitchbend / 12);
             this.intensity = parameters["intensity"][i] ?? parameters["intensity"][0];
             this.UITenseness = (parameters["tenseness"][i] ?? parameters["tenseness"][0])
                 * (parameters["tenseness-scale"][i] ?? parameters["tenseness-scale"][0]);
