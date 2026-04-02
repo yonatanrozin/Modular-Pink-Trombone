@@ -321,20 +321,30 @@ class TractProcessor extends AudioWorkletProcessor {
 
     constructor(options?: Partial<AudioWorkletNodeOptions>) {
         super();
-        this.init();
-        this.port.start();
-        this.port.postMessage({diameters: this.diameter, velum: this.noseDiameter[0]});
-        this.port.onmessage = ({data}) => { 
-            let diameters = data.diameters as ArrayLike<number> | undefined;
-            if (!diameters) return;
-            diameters = diameters.length !== this.n ? linear(
-                new Array(this.n).fill(0).map((_, i) => i/(this.n - 1)),
-                new Array(data.diameters.length).fill(0).map((_, i) => i/(diameters!.length - 1)),
-                Array.from(diameters)
-            ) : diameters;
-            this.restDiameter.set(diameters); 
-        }
         this.hasTongue = options?.processorOptions?.hasTongue ?? true;
+        this.port.onmessage = this.onPortMessage;
+        this.port.start();
+        this.init();
+        this.port.postMessage({diameters: this.diameter, velum: this.noseDiameter[0]});
+    }
+
+    onPortMessage = ({data}: MessageEvent<{diameters?: ArrayLike<number>}>) => { 
+        let {diameters} = data;
+        if (!diameters) return;
+        if (diameters.length !== this.n) {
+            const newDiameters = linear(
+                new Array(this.n).fill(0).map((_, i) => i/(this.n - 1)),
+                new Array(diameters.length).fill(0).map((_, i) => i/(diameters!.length - 1)),
+                Array.from(diameters)
+            );
+            //preserve stops
+            for (let i = 0; i < diameters.length; i++) {
+                const mappedIndex = Math.round(i / (diameters.length - 1) * (this.n - 1));
+                if (diameters[i] === 0) newDiameters[mappedIndex] = 0;
+            }
+            this.restDiameter.set(newDiameters); 
+        }
+        else this.restDiameter.set(diameters);
     }
 
     init(n = this.n) {
@@ -513,7 +523,7 @@ class TractProcessor extends AudioWorkletProcessor {
         for (let i = 0; i < this.n; i++) {
             const diameter = this.diameter[i];
             const targetDiameter = this.targetDiameter[i];
-            if (diameter <= 0) newLastObstruction = i;
+            if (diameter <= 0.05) newLastObstruction = i;
             let slowReturn; 
             if (i<this.noseStart) slowReturn = 0.6;
             else if (i >= this.tipStart) slowReturn = 1.0; 
