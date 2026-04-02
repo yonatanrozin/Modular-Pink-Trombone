@@ -449,7 +449,7 @@ class TractProcessor extends AudioWorkletProcessor {
     addTurbulenceNoise(turbulenceNoise: number, noiseModulator: number) {
         const index = this.constrictionIndex;
         const diameter = (this.hasTongue ? this.constrictionDiameter : this.diameter[Math.round(index)]) + 0.3; 
-        if (index <= 0 || index >= this.n - 1) return;
+        if (index <= 0 || index >= this.n - 1 || this.lastObstruction !== -1) return;
         this.addTurbulenceNoiseAtIndex(0.66 * turbulenceNoise * this.intensity, index, diameter, noiseModulator);
     }
     
