@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import RPTProcessors from "./processors.ts?worker&url";
 
 export async function addRPT(ctx: AudioContext) {
@@ -80,7 +80,9 @@ export default class RPT {
         this.connected = false;
     }
 
-    UIComponent = (props?: {keyboard?: boolean}) => this.tract.UIComponent({...props, glottis: this.glottis});
+    UIComponent = (props?: {keyboard?: boolean, style?: CSSProperties}) => {
+        return this.tract.UIComponent({...props, glottis: this.glottis});
+    }
 
     private getWhiteNoiseSource(ctx: AudioContext): AudioBufferSourceNode {
         const whiteNoise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -155,9 +157,9 @@ export class RPTTractNode extends AudioWorkletNode {
         this.port.postMessage({diameters});
     }
 
-    UIComponent = (props: {glottis?: RPTGlottisNode, keyboard?: boolean}) => {
+    UIComponent = (props: {glottis?: RPTGlottisNode, keyboard?: boolean, style?: CSSProperties}) => {
 
-        const {glottis, keyboard} = props;
+        const {glottis, keyboard, style} = props;
         const [UI, setUI] = useState<RPTTractUI>();
         const canvasRef = useRef<HTMLCanvasElement>(null);
         const animationFrame = useRef<number>();
@@ -175,8 +177,9 @@ export class RPTTractNode extends AudioWorkletNode {
             return () => { cancelAnimationFrame(animationFrame.current!); }
         }, [canvasRef, UI]);
 
-        if (UI) return <canvas ref={canvasRef} width={600} height={glottis && keyboard ? 700 : 600} className="RPT-tract-canvas"
-            onMouseDown={UI.startMouse} onMouseUp={UI.endMouse} onMouseMove={UI.moveMouse} 
+        if (UI) return <canvas width={600} height={glottis && keyboard ? 700 : 600} className="RPT-tract-canvas"
+            ref={canvasRef} onMouseDown={UI.startMouse} onMouseUp={UI.endMouse} onMouseMove={UI.moveMouse} 
+            style={style}
         />
     }
 
